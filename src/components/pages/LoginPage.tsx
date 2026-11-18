@@ -20,6 +20,9 @@ export const LoginPage: React.FC = () => {
   const [step, setStep] = useState<'credentials' | 'mfa' | 'loading'>('credentials');
   const [mfaCode, setMfaCode] = useState<string[]>(['4', '8', '2', '9', '1', '0']);
 
+  // Mobile Workspace Category Filter: 'all' | 'Staff' | 'External'
+  const [activeCategoryFilter, setActiveCategoryFilter] = useState<'all' | 'Staff' | 'External'>('all');
+
   // Request Access Modal
   const [isRequestModalOpen, setIsRequestModalOpen] = useState<boolean>(false);
   const [reqName, setReqName] = useState('');
@@ -81,55 +84,55 @@ export const LoginPage: React.FC = () => {
     switch (iconName) {
       case 'shield-check':
         return (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
           </svg>
         );
       case 'user-plus':
         return (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
           </svg>
         );
       case 'clipboard-heart':
         return (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
           </svg>
         );
       case 'calendar-clock':
         return (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
         );
-      case 'receipt-dollar':
+      case 'receipt-tax':
         return (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" />
+          <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
           </svg>
         );
-      case 'smartphone-heart':
+      case 'device-mobile':
         return (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
           </svg>
         );
-      case 'users-group':
+      case 'users':
         return (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
           </svg>
         );
-      case 'file-check':
+      case 'clipboard-check':
         return (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         );
       default:
         return (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="8" />
           </svg>
         );
@@ -137,215 +140,296 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--bg,#F7F7F4)] flex items-center justify-center p-4 lg:p-8">
-      <div className="w-full max-w-6xl grid lg:grid-cols-12 gap-6 items-stretch">
-        
-        {/* ========================================================================= */}
-        {/* LEFT PANEL (Deep Forest Green Card) */}
-        {/* In mobile, this renders after the sign in form for immediate login access */}
-        {/* ========================================================================= */}
-        <div
-          style={{ backgroundColor: 'var(--green-900, #1b381e)' }}
-          className="order-2 lg:order-1 lg:col-span-7 rounded-3xl p-6 lg:p-8 text-white shadow-xl flex flex-col justify-between border border-white/10"
-        >
-          {/* Header & Status Pill */}
+    <div className="min-h-screen w-full flex flex-col lg:flex-row bg-white selection:bg-emerald-800 selection:text-white">
+      
+      {/* ========================================================================= */}
+      {/* LEFT PANEL: Deep Forest Green Brand & Workspace Showcase */}
+      {/* Edge-to-edge on desktop (no wasted side whitespace), responsive on mobile/tablet */}
+      {/* ========================================================================= */}
+      <section
+        aria-label="LiliSare Workspace Selector"
+        style={{ backgroundColor: 'var(--green-900, #1b381e)' }}
+        className="w-full lg:w-[58%] xl:w-[60%] 2xl:w-[62%] min-h-screen text-white p-5 sm:p-8 lg:p-10 xl:p-14 2xl:p-16 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-emerald-950/40 relative shadow-2xl"
+      >
+        <div className="w-full max-w-4xl mx-auto flex flex-col justify-between h-full space-y-6">
+          
+          {/* Top Brand Bar & Live Status Indicator */}
           <div>
-            <div className="flex items-center justify-between gap-4 mb-6">
-              <div className="flex items-center gap-3">
-                <div className="bg-white rounded-xl p-2 w-12 h-12 flex items-center justify-center shadow-sm shrink-0">
-                  <img src="/lilisare-logo.png" alt="LiliSare Logo" className="w-full h-auto object-contain max-h-8" />
+            <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-white/10">
+              <div className="flex items-center gap-3.5">
+                <div className="bg-white rounded-2xl p-2.5 w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center shadow-md shrink-0">
+                  <img
+                    src="/lilisare-logo.png"
+                    alt="LiliSare Logo"
+                    className="w-full h-auto object-contain max-h-9"
+                  />
                 </div>
                 <div>
-                  <div className="font-bold text-xl tracking-tight text-white flex items-center gap-2">
+                  <div className="font-extrabold text-xl sm:text-2xl tracking-tight text-white flex items-center gap-2">
                     <span>LiliSare</span>
-                    <span className="text-white/60 font-normal text-sm">/ LiliSphere</span>
+                    <span className="text-white/50 font-normal text-xs sm:text-sm">/ LiliSphere</span>
                   </div>
-                  <div className="text-xs text-white/70">Operating system for home care</div>
+                  <div className="text-xs sm:text-sm text-emerald-200/80 font-medium">
+                    Operating system for home care
+                  </div>
                 </div>
               </div>
 
-              {/* Status Pill */}
-              <div className="inline-flex items-center gap-1.5 bg-white/10 border border-white/15 px-3 py-1 rounded-full text-xs font-medium text-emerald-300">
+              {/* Systems Status Pill */}
+              <div className="inline-flex items-center gap-2 bg-emerald-500/15 border border-emerald-400/30 px-3.5 py-1.5 rounded-full text-xs font-semibold text-emerald-300 backdrop-blur-xs">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                 <span>Systems operational</span>
               </div>
             </div>
 
-            {/* Workspace Selector Label */}
-            <div className="mb-4">
-              <div className="text-xs uppercase font-bold text-white/60 tracking-wider">
-                Choose your workspace (demo)
-              </div>
-              <p className="text-xs text-white/80 mt-0.5">
-                Selecting a workspace fills demo credentials and role permissions.
-              </p>
-            </div>
-
-            {/* Mobile Workspace Dropdown (when viewport is small) */}
-            <div className="lg:hidden mb-4">
-              <label htmlFor="mobile-workspace-select" className="sr-only">Choose Workspace</label>
-              <select
-                id="mobile-workspace-select"
-                value={selectedWorkspace.id}
-                onChange={(e) => {
-                  const ws = DEMO_WORKSPACES.find((w) => w.id === e.target.value);
-                  if (ws) handleSelectWorkspace(ws);
-                }}
-                className="w-full bg-white/15 text-white border border-white/20 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
-              >
-                {DEMO_WORKSPACES.map((w) => (
-                  <option key={w.id} value={w.id} className="text-stone-900">
-                    {w.name} ({w.category}) — {w.oneLine}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Workspace Tiles (Desktop & Tablet) */}
-            <div className="hidden lg:block space-y-4">
-              {/* Group 1: Staff */}
+            {/* Section Header & Subtitle */}
+            <div className="mt-6 mb-4 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
               <div>
-                <div className="text-[11px] font-bold text-white/50 uppercase tracking-wider mb-2">
-                  Staff Workspaces
-                </div>
-                <div className="grid grid-cols-2 gap-2.5">
-                  {DEMO_WORKSPACES.filter((w) => w.category === 'Staff').map((ws) => {
-                    const isSelected = selectedWorkspace.id === ws.id;
-                    return (
-                      <button
-                        key={ws.id}
-                        type="button"
-                        onClick={() => handleSelectWorkspace(ws)}
-                        className={`text-left p-3 rounded-2xl transition border flex items-start gap-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-400 ${
-                          isSelected
-                            ? 'bg-white/25 border-emerald-400 shadow-md text-white'
-                            : 'bg-white/10 hover:bg-white/15 border-white/10 text-white/85'
-                        }`}
-                      >
-                        <div className={`p-2 rounded-xl shrink-0 ${isSelected ? 'bg-emerald-500 text-white' : 'bg-white/10 text-white/80'}`}>
-                          {renderTileIcon(ws.icon)}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="font-bold text-xs truncate flex items-center justify-between">
-                            <span>{ws.name}</span>
-                            {isSelected && <span className="text-emerald-400 text-sm">✓</span>}
-                          </div>
-                          <div className="text-[11px] text-white/70 line-clamp-1 mt-0.5">
-                            {ws.oneLine}
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
+                <h2 className="text-xs uppercase font-bold text-emerald-300/90 tracking-widest">
+                  Choose your workspace (demo)
+                </h2>
+                <p className="text-xs sm:text-sm text-white/80 mt-1">
+                  Selecting a workspace fills demo credentials, role permissions, and views.
+                </p>
               </div>
 
-              {/* Group 2: External Portals */}
-              <div>
-                <div className="text-[11px] font-bold text-white/50 uppercase tracking-wider mb-2">
-                  External Portals
-                </div>
-                <div className="grid grid-cols-3 gap-2.5">
-                  {DEMO_WORKSPACES.filter((w) => w.category === 'External').map((ws) => {
-                    const isSelected = selectedWorkspace.id === ws.id;
-                    return (
-                      <button
-                        key={ws.id}
-                        type="button"
-                        onClick={() => handleSelectWorkspace(ws)}
-                        className={`text-left p-3 rounded-2xl transition border flex flex-col justify-between focus:outline-none focus:ring-2 focus:ring-emerald-400 ${
-                          isSelected
-                            ? 'bg-white/25 border-emerald-400 shadow-md text-white'
-                            : 'bg-white/10 hover:bg-white/15 border-white/10 text-white/85'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <div className={`p-1.5 rounded-lg shrink-0 ${isSelected ? 'bg-emerald-500 text-white' : 'bg-white/10 text-white/80'}`}>
+              {/* Category Filter Pills (Convenient on all screen sizes) */}
+              <div className="flex items-center gap-1.5 bg-black/20 p-1 rounded-xl self-start sm:self-auto border border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setActiveCategoryFilter('all')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                    activeCategoryFilter === 'all'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-white/70 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  All (8)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveCategoryFilter('Staff')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                    activeCategoryFilter === 'Staff'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-white/70 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  Staff (5)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveCategoryFilter('External')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                    activeCategoryFilter === 'External'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-white/70 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  External (3)
+                </button>
+              </div>
+            </div>
+
+            {/* WORKSPACE TILES GRID: Fully Responsive across Mobile, Tablet & Desktop */}
+            <div className="space-y-4">
+              
+              {/* Group 1: Staff Workspaces */}
+              {(activeCategoryFilter === 'all' || activeCategoryFilter === 'Staff') && (
+                <div>
+                  <div className="text-[11px] font-bold text-white/60 uppercase tracking-wider mb-2 flex items-center justify-between">
+                    <span>Staff Workspaces</span>
+                    <span className="text-[10px] text-white/40 font-normal">Internal operations</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {DEMO_WORKSPACES.filter((w) => w.category === 'Staff').map((ws) => {
+                      const isSelected = selectedWorkspace.id === ws.id;
+                      return (
+                        <button
+                          key={ws.id}
+                          type="button"
+                          onClick={() => handleSelectWorkspace(ws)}
+                          className={`text-left p-3 sm:p-3.5 rounded-2xl transition border flex items-start gap-3 focus:outline-none focus:ring-2 focus:ring-emerald-400 group cursor-pointer ${
+                            isSelected
+                              ? 'bg-white/20 border-emerald-400 ring-1 ring-emerald-400/50 shadow-lg text-white'
+                              : 'bg-white/10 hover:bg-white/15 border-white/10 hover:border-white/20 text-white/85'
+                          }`}
+                        >
+                          <div
+                            className={`p-2 rounded-xl shrink-0 transition ${
+                              isSelected
+                                ? 'bg-emerald-500 text-white shadow-sm'
+                                : 'bg-white/10 text-emerald-200 group-hover:bg-white/20'
+                            }`}
+                          >
                             {renderTileIcon(ws.icon)}
                           </div>
-                          {isSelected && <span className="text-emerald-400 text-xs font-bold">✓ Selected</span>}
-                        </div>
-                        <div>
-                          <div className="font-bold text-xs truncate">{ws.name}</div>
-                          <div className="text-[10px] text-white/70 line-clamp-1 mt-0.5">{ws.oneLine}</div>
-                        </div>
-                      </button>
-                    );
-                  })}
+                          <div className="min-w-0 flex-1">
+                            <div className="font-bold text-xs sm:text-sm truncate flex items-center justify-between">
+                              <span className="text-white group-hover:text-emerald-200 transition">{ws.name}</span>
+                              {isSelected && (
+                                <span className="text-emerald-400 font-extrabold text-sm ml-1">✓</span>
+                              )}
+                            </div>
+                            <div className="text-[11px] sm:text-xs text-white/70 line-clamp-1 mt-0.5">
+                              {ws.oneLine}
+                            </div>
+                            <div className="text-[10px] text-white/50 mt-1">
+                              Simulating: <span className="font-medium text-white/75">{ws.user}</span>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Group 2: External Portals */}
+              {(activeCategoryFilter === 'all' || activeCategoryFilter === 'External') && (
+                <div>
+                  <div className="text-[11px] font-bold text-white/60 uppercase tracking-wider mb-2 flex items-center justify-between">
+                    <span>External Portals</span>
+                    <span className="text-[10px] text-white/40 font-normal">Clients, family & partners</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    {DEMO_WORKSPACES.filter((w) => w.category === 'External').map((ws) => {
+                      const isSelected = selectedWorkspace.id === ws.id;
+                      return (
+                        <button
+                          key={ws.id}
+                          type="button"
+                          onClick={() => handleSelectWorkspace(ws)}
+                          className={`text-left p-3 sm:p-3.5 rounded-2xl transition border flex flex-col justify-between focus:outline-none focus:ring-2 focus:ring-emerald-400 group cursor-pointer ${
+                            isSelected
+                              ? 'bg-white/20 border-emerald-400 ring-1 ring-emerald-400/50 shadow-lg text-white'
+                              : 'bg-white/10 hover:bg-white/15 border-white/10 hover:border-white/20 text-white/85'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <div
+                              className={`p-2 rounded-xl shrink-0 transition ${
+                                isSelected
+                                  ? 'bg-emerald-500 text-white shadow-sm'
+                                  : 'bg-white/10 text-emerald-200 group-hover:bg-white/20'
+                              }`}
+                            >
+                              {renderTileIcon(ws.icon)}
+                            </div>
+                            {isSelected && (
+                              <span className="text-emerald-400 text-xs font-bold bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-400/30">
+                                ✓ Active
+                              </span>
+                            )}
+                          </div>
+                          <div>
+                            <div className="font-bold text-xs sm:text-sm text-white group-hover:text-emerald-200 transition truncate">
+                              {ws.name}
+                            </div>
+                            <div className="text-[10px] sm:text-xs text-white/70 line-clamp-1 mt-0.5">
+                              {ws.oneLine}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Dynamic Summary of Chosen Workspace */}
-            <div className="mt-5 p-4 rounded-2xl bg-white/10 border border-white/15 backdrop-blur-xs">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="font-bold text-sm text-white">{selectedWorkspace.name} Workspace</span>
-                <span className="bg-emerald-400/20 text-emerald-300 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-emerald-400/30">
-                  {selectedWorkspace.category}
-                </span>
+            <div className="mt-5 p-4 sm:p-5 rounded-2xl bg-white/10 border border-white/15 backdrop-blur-xs shadow-inner">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm sm:text-base text-white">
+                    {selectedWorkspace.name} Workspace
+                  </span>
+                  <span className="bg-emerald-400/20 text-emerald-300 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-emerald-400/30">
+                    {selectedWorkspace.category}
+                  </span>
+                </div>
+                <div className="text-[11px] text-emerald-200/90 font-medium">
+                  {selectedWorkspace.allowedPages.length === 20 ? 'Full System Clearance (All 20 Modules)' : `${selectedWorkspace.allowedPages.length} Modules Scope`}
+                </div>
               </div>
-              <p className="text-xs text-white/80 leading-relaxed mb-2.5">
+
+              <p className="text-xs sm:text-sm text-white/85 leading-relaxed mb-3">
                 {selectedWorkspace.description}
               </p>
-              <div className="text-[11px] font-semibold text-white/90 mb-1.5 uppercase tracking-wide">
+
+              <div className="text-[11px] font-bold text-emerald-200 uppercase tracking-wider mb-1.5">
                 What you can do here:
               </div>
-              <ul className="space-y-1 text-xs text-white/80 list-disc list-inside">
+              <ul className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-white/85">
                 {selectedWorkspace.highlights.map((h, i) => (
-                  <li key={i} className="leading-snug">{h}</li>
+                  <li key={i} className="flex items-start gap-1.5 leading-snug bg-black/15 p-2 rounded-xl border border-white/5">
+                    <span className="text-emerald-400 font-bold shrink-0">✓</span>
+                    <span>{h}</span>
+                  </li>
                 ))}
               </ul>
             </div>
           </div>
 
-          {/* Bottom Trust & Footer */}
-          <div className="mt-6 pt-4 border-t border-white/15 text-xs text-white/70">
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-2 font-medium text-[11px]">
-              <span className="flex items-center gap-1.5">
-                <span>🛡️</span> Role-based access
+          {/* Bottom Trust & Footer (Clean on Desktop & Mobile) */}
+          <div className="pt-6 border-t border-white/15 text-xs text-white/75 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 font-medium text-xs">
+              <span className="flex items-center gap-2 bg-white/5 px-2.5 py-1.5 rounded-xl border border-white/5">
+                <span className="text-sm">🛡️</span> Role-based access
               </span>
-              <span className="flex items-center gap-1.5">
-                <span>📋</span> Every view is logged
+              <span className="flex items-center gap-2 bg-white/5 px-2.5 py-1.5 rounded-xl border border-white/5">
+                <span className="text-sm">📋</span> Every view is logged
               </span>
-              <span className="flex items-center gap-1.5">
-                <span>🔒</span> HIPAA-protected data
+              <span className="flex items-center gap-2 bg-white/5 px-2.5 py-1.5 rounded-xl border border-white/5">
+                <span className="text-sm">🔒</span> HIPAA-protected data
               </span>
             </div>
-            <div className="flex items-center justify-between text-[11px] text-white/50">
+
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between text-[11px] text-white/50 pt-2 gap-1">
               <span>© 2026 LiliSare · All rights reserved</span>
-              <span>Encrypted in transit and at rest</span>
+              <span>256-bit encrypted in transit and at rest</span>
             </div>
           </div>
-        </div>
 
-        {/* ========================================================================= */}
-        {/* RIGHT PANEL (White Card: Authentication & MFA Form) */}
-        {/* ========================================================================= */}
-        <div className="order-1 lg:order-2 lg:col-span-5 bg-white border border-stone-200 rounded-3xl p-6 lg:p-10 shadow-xl flex flex-col justify-between">
+        </div>
+      </section>
+
+      {/* ========================================================================= */}
+      {/* RIGHT PANEL: Authentication & MFA Form */}
+      {/* Edge-to-edge on desktop (no wasted right whitespace), cleanly centered form */}
+      {/* ========================================================================= */}
+      <section
+        aria-label="Sign In Credentials Form"
+        className="w-full lg:w-[42%] xl:w-[40%] 2xl:w-[38%] min-h-screen bg-[#FAFAF8] lg:bg-white flex flex-col justify-between p-6 sm:p-10 lg:p-12 xl:p-16 relative"
+      >
+        <div className="w-full max-w-md mx-auto flex flex-col justify-between h-full space-y-8 my-auto py-6">
+          
           <div>
-            {/* Top Chip & Reset Button */}
-            <div className="flex items-center justify-between mb-8">
-              <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-800 px-3 py-1 rounded-full text-xs font-semibold">
+            {/* Top Workspace Indicator Chip & Reset Button */}
+            <div className="flex items-center justify-between gap-3 mb-8 pb-4 border-b border-stone-200">
+              <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-900 px-3 py-1.5 rounded-full text-xs font-semibold shadow-xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
                 <span>Workspace:</span>
-                <span className="font-bold">{selectedWorkspace.name}</span>
+                <span className="font-bold text-[#3E6B2B]">{selectedWorkspace.name}</span>
               </div>
 
               <button
                 type="button"
                 onClick={handleReset}
-                className="text-xs font-semibold text-stone-500 hover:text-stone-800 transition"
+                className="text-xs font-semibold text-stone-500 hover:text-stone-900 hover:underline transition cursor-pointer"
               >
-                Reset
+                Reset demo credentials
               </button>
             </div>
 
-            {/* Greeting */}
-            <div className="mb-6">
-              <h1 className="text-2xl lg:text-3xl font-bold text-stone-900 tracking-tight">
+            {/* Greeting Header */}
+            <div className="mb-8">
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-stone-900 tracking-tight">
                 Welcome back
               </h1>
-              <p className="text-sm text-stone-500 mt-1">
-                Sign in to your account to continue into LiliSare.
+              <p className="text-sm text-stone-600 mt-1.5 leading-relaxed">
+                Sign in to your account to continue into <strong className="text-stone-800">LiliSare</strong>.
               </p>
             </div>
 
@@ -353,7 +437,7 @@ export const LoginPage: React.FC = () => {
             {step === 'credentials' && (
               <form onSubmit={handleCredentialsSubmit} className="space-y-4">
                 <div>
-                  <label htmlFor="login-email" className="block text-xs font-semibold text-stone-700 mb-1">
+                  <label htmlFor="login-email" className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1.5">
                     Email address
                   </label>
                   <input
@@ -362,22 +446,25 @@ export const LoginPage: React.FC = () => {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#3E6B2B]"
+                    className="w-full px-4 py-3 rounded-xl border border-stone-300 text-base sm:text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#3E6B2B] focus:border-transparent transition bg-white shadow-2xs"
                   />
-                  <div className="text-[11px] text-stone-400 mt-1">
-                    Simulating: <strong>{selectedWorkspace.user}</strong>
+                  <div className="text-xs text-stone-500 mt-1.5 flex items-center gap-1.5">
+                    <span>Simulating user:</span>
+                    <span className="font-semibold text-stone-800 bg-stone-100 px-2 py-0.5 rounded-md border border-stone-200">
+                      {selectedWorkspace.user}
+                    </span>
                   </div>
                 </div>
 
                 <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label htmlFor="login-password" className="block text-xs font-semibold text-stone-700">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label htmlFor="login-password" className="block text-xs font-bold text-stone-700 uppercase tracking-wider">
                       Password
                     </label>
                     <button
                       type="button"
                       onClick={() => showToast(`Password reset link emailed to ${email}.`)}
-                      className="text-xs font-semibold text-[#3E6B2B] hover:underline"
+                      className="text-xs font-semibold text-[#3E6B2B] hover:underline cursor-pointer"
                     >
                       Forgot password?
                     </button>
@@ -389,12 +476,12 @@ export const LoginPage: React.FC = () => {
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="w-full pl-3.5 pr-10 py-2.5 rounded-xl border border-stone-300 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#3E6B2B]"
+                      className="w-full pl-4 pr-12 py-3 rounded-xl border border-stone-300 text-base sm:text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#3E6B2B] focus:border-transparent transition bg-white shadow-2xs"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-3 text-stone-400 hover:text-stone-700 text-xs font-semibold"
+                      className="absolute right-3.5 top-3 text-stone-500 hover:text-stone-800 text-xs font-bold px-1.5 py-0.5 rounded-md hover:bg-stone-100 transition cursor-pointer"
                     >
                       {showPassword ? 'Hide' : 'Show'}
                     </button>
@@ -402,12 +489,12 @@ export const LoginPage: React.FC = () => {
                 </div>
 
                 <div className="flex items-center justify-between pt-1">
-                  <label className="flex items-center gap-2 cursor-pointer text-xs text-stone-600">
+                  <label className="flex items-center gap-2.5 cursor-pointer text-xs sm:text-sm text-stone-600 select-none">
                     <input
                       type="checkbox"
                       checked={rememberMe}
                       onChange={(e) => setRememberMe(e.target.checked)}
-                      className="rounded border-stone-300 accent-[#3E6B2B]"
+                      className="w-4 h-4 rounded border-stone-300 text-[#3E6B2B] focus:ring-[#3E6B2B] accent-[#3E6B2B]"
                     />
                     <span>Keep me signed in</span>
                   </label>
@@ -415,10 +502,10 @@ export const LoginPage: React.FC = () => {
 
                 <button
                   type="submit"
-                  className="w-full bg-[#3E6B2B] hover:bg-[#335a23] text-white font-bold text-sm py-3 rounded-xl shadow-xs transition mt-2 flex items-center justify-center gap-2"
+                  className="w-full bg-[#3E6B2B] hover:bg-[#335a23] text-white font-bold text-base sm:text-sm py-3.5 rounded-xl shadow-md hover:shadow-lg transition mt-3 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]"
                 >
                   <span>Sign in</span>
-                  <span>→</span>
+                  <span className="text-base">→</span>
                 </button>
               </form>
             )}
@@ -427,46 +514,50 @@ export const LoginPage: React.FC = () => {
             {step === 'mfa' && (
               <form onSubmit={handleVerifyMfa} className="space-y-5 animate-fade-in">
                 <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-xs text-emerald-900 flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0 font-bold text-sm">
+                  <div className="w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0 font-bold text-sm shadow-sm">
                     🔒
                   </div>
                   <div>
-                    <div className="font-bold text-sm">Enter the 6-digit code</div>
-                    <div className="text-emerald-700 mt-0.5">
-                      We sent a temporary verification code to your registered device (•••• 412).
+                    <div className="font-bold text-sm text-emerald-950">Enter the 6-digit code</div>
+                    <div className="text-emerald-800 mt-0.5 leading-relaxed">
+                      Two-factor authentication is required for HIPAA compliance. We sent a code to your registered device.
                     </div>
                   </div>
                 </div>
 
-                {/* 6 Digit Code Boxes (pre-filled in demo) */}
+                {/* 6-digit boxes (Responsive flex layout) */}
                 <div>
-                  <div className="flex items-center justify-between gap-2">
-                    {mfaCode.map((digit, index) => (
+                  <div className="flex justify-between items-center gap-1.5 sm:gap-2 mb-2">
+                    {mfaCode.map((digit, idx) => (
                       <input
-                        key={index}
+                        key={idx}
+                        id={`mfa-${idx}`}
                         type="text"
                         maxLength={1}
                         value={digit}
                         onChange={(e) => {
                           const val = e.target.value.slice(-1);
                           const next = [...mfaCode];
-                          next[index] = val;
+                          next[idx] = val;
                           setMfaCode(next);
+                          if (val && idx < 5) {
+                            const nextEl = document.getElementById(`mfa-${idx + 1}`);
+                            nextEl?.focus();
+                          }
                         }}
-                        aria-label={`Digit ${index + 1}`}
-                        className="w-12 h-12 text-center text-lg font-bold rounded-xl border border-stone-300 text-stone-900 bg-stone-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#3E6B2B]"
+                        className="w-12 h-14 sm:w-14 sm:h-16 text-center text-xl sm:text-2xl font-bold rounded-xl border border-stone-300 text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#3E6B2B] focus:border-[#3E6B2B] bg-white shadow-2xs"
                       />
                     ))}
                   </div>
-                  <div className="text-[11px] text-stone-400 text-center mt-2">
-                    Demo code auto-filled for immediate testing
+                  <div className="text-center text-xs text-stone-500 mt-2">
+                    Demo pre-filled code: <span className="font-mono font-bold text-stone-800">482910</span>
                   </div>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-2 pt-2">
                   <button
                     type="submit"
-                    className="w-full bg-[#3E6B2B] hover:bg-[#335a23] text-white font-bold text-sm py-3 rounded-xl shadow-xs transition flex items-center justify-center gap-2"
+                    className="w-full bg-[#3E6B2B] hover:bg-[#335a23] text-white font-bold text-base sm:text-sm py-3.5 rounded-xl shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <span>Verify and enter workspace</span>
                     <span>→</span>
@@ -475,7 +566,7 @@ export const LoginPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setStep('credentials')}
-                    className="w-full text-center text-xs text-stone-500 hover:text-stone-800 py-1 font-semibold"
+                    className="w-full text-stone-600 hover:text-stone-900 font-semibold text-xs py-2 text-center transition cursor-pointer"
                   >
                     ← Back to credentials
                   </button>
@@ -486,124 +577,131 @@ export const LoginPage: React.FC = () => {
             {/* STEP 3: LOADING SIMULATION */}
             {step === 'loading' && (
               <div className="py-12 flex flex-col items-center justify-center text-center space-y-4 animate-fade-in">
-                <div className="w-10 h-10 border-4 border-emerald-200 border-t-[#3E6B2B] rounded-full animate-spin" />
+                <div className="w-12 h-12 border-4 border-emerald-200 border-t-[#3E6B2B] rounded-full animate-spin"></div>
                 <div>
-                  <div className="font-bold text-base text-stone-900">
-                    Opening your {selectedWorkspace.name} workspace…
+                  <div className="font-bold text-lg text-stone-900">
+                    Opening {selectedWorkspace.name}…
                   </div>
-                  <div className="text-xs text-stone-500 mt-1">
-                    Applying security credentials and caseload permissions.
-                  </div>
+                  <p className="text-xs text-stone-500 mt-1">
+                    Loading role permissions, client caseload, and compliance scope.
+                  </p>
                 </div>
               </div>
             )}
-          </div>
 
-          {/* Bottom Help & Request Access */}
-          <div className="pt-8 border-t border-stone-100 text-center space-y-3">
-            <div className="text-xs text-stone-600">
-              Don’t have an account?{' '}
+            {/* Request Access Link */}
+            <div className="mt-8 pt-6 border-t border-stone-200 text-center">
+              <span className="text-xs sm:text-sm text-stone-600">Don't have an account? </span>
               <button
                 type="button"
                 onClick={() => setIsRequestModalOpen(true)}
-                className="font-bold text-[#3E6B2B] hover:underline"
+                className="text-xs sm:text-sm font-bold text-[#3E6B2B] hover:underline cursor-pointer"
               >
                 Request access
               </button>
             </div>
-
-            <div className="text-[11px] text-stone-400 leading-tight">
-              Access is by invitation only. Sessions lock after 15 minutes of inactivity.
-            </div>
           </div>
-        </div>
 
-      </div>
+          {/* Bottom Security Note */}
+          <div className="text-center text-[11px] text-stone-400 leading-normal pt-4">
+            Access is by invitation only. Sessions automatically lock after 15 minutes of inactivity in compliance with HIPAA §164.312(a)(2)(iii).
+          </div>
+
+        </div>
+      </section>
 
       {/* ========================================================================= */}
-      {/* MODAL: REQUEST ACCESS */}
+      {/* REQUEST ACCESS MODAL */}
       {/* ========================================================================= */}
       {isRequestModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-stone-200 space-y-4 animate-fade-in">
-            <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-stone-200">
+            <div className="flex items-center justify-between pb-4 border-b border-stone-200 mb-6">
               <div>
-                <h2 className="font-bold text-lg text-stone-900">Request LiliSare Access</h2>
-                <p className="text-xs text-stone-500">Submit an access request to your agency administrator.</p>
+                <h3 className="font-bold text-lg text-stone-900">Request LiliSare Access</h3>
+                <p className="text-xs text-stone-500 mt-0.5">
+                  Submit an access request to the LiliSare system administrator.
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsRequestModalOpen(false)}
-                className="text-stone-400 hover:text-stone-700 text-lg"
+                className="w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 flex items-center justify-center transition cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleRequestAccessSubmit} className="space-y-3 text-xs">
+            <form onSubmit={handleRequestAccessSubmit} className="space-y-4">
               <div>
-                <label className="block font-semibold text-stone-700 mb-1">Your Full Name *</label>
+                <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                  Full name *
+                </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Jordan Smith"
+                  placeholder="e.g. Sarah Jenkins, RN"
                   value={reqName}
                   onChange={(e) => setReqName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#3E6B2B]"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#3E6B2B]"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-stone-700 mb-1">Work Email *</label>
+                <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                  Work email *
+                </label>
                 <input
                   type="email"
                   required
-                  placeholder="jordan.smith@lilisare.com"
+                  placeholder="name@lilisare.com"
                   value={reqEmail}
                   onChange={(e) => setReqEmail(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#3E6B2B]"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#3E6B2B]"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-stone-700 mb-1">Role Requested</label>
+                <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                  Requested role & workspace *
+                </label>
                 <select
                   value={reqRole}
                   onChange={(e) => setReqRole(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-stone-300 text-sm bg-white"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#3E6B2B]"
                 >
-                  <option value="Enrollment and Onboarding">Enrollment and Onboarding</option>
-                  <option value="Compliance and Clinical">Compliance and Clinical</option>
-                  <option value="Scheduling">Scheduling</option>
-                  <option value="Billing and Payroll">Billing and Payroll</option>
-                  <option value="Caregiver">Caregiver</option>
-                  <option value="Family / Responsible Party">Family / Responsible Party</option>
-                  <option value="Case Manager">Case Manager (State CMA)</option>
+                  {DEMO_WORKSPACES.map((w) => (
+                    <option key={w.id} value={w.name}>
+                      {w.name} ({w.category}) — {w.oneLine}
+                    </option>
+                  ))}
                 </select>
               </div>
 
               <div>
-                <label className="block font-semibold text-stone-700 mb-1">Note to Administrator</label>
+                <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                  Note to agency administrator (optional)
+                </label>
                 <textarea
-                  rows={2}
-                  placeholder="State your branch location or supervisor name..."
+                  rows={3}
+                  placeholder="State your department, caseload, or business line requirements..."
                   value={reqNote}
                   onChange={(e) => setReqNote(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs focus:outline-none focus:ring-2 focus:ring-[#3E6B2B]"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#3E6B2B]"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-stone-100">
+              <div className="pt-2 flex items-center justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => setIsRequestModalOpen(false)}
-                  className="border border-stone-300 text-stone-700 px-4 py-2 rounded-xl hover:bg-stone-50 transition"
+                  className="px-4 py-2 text-stone-600 hover:text-stone-900 font-semibold text-xs cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="bg-[#3E6B2B] hover:bg-[#335a23] text-white font-bold px-5 py-2 rounded-xl shadow-xs transition"
+                  className="bg-[#3E6B2B] hover:bg-[#335a23] text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-xs transition cursor-pointer"
                 >
                   Submit request
                 </button>
@@ -612,6 +710,7 @@ export const LoginPage: React.FC = () => {
           </div>
         </div>
       )}
+
     </div>
   );
 };
