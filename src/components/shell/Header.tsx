@@ -14,6 +14,8 @@ export const Header: React.FC = () => {
     setIsMobileNavOpen,
     isUserMenuOpen,
     setIsUserMenuOpen,
+    logout,
+    setIsWorkspacePickerOpen,
   } = useApp();
 
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -92,7 +94,13 @@ export const Header: React.FC = () => {
                 className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-stone-100 text-stone-700 transition"
                 onClick={() => {
                   setIsUserMenuOpen(false);
-                  showToast(`${item} (demo)`);
+                  if (item === 'Sign out') {
+                    logout();
+                  } else if (item === 'Switch role') {
+                    setIsWorkspacePickerOpen(true);
+                  } else {
+                    showToast(`${item} (demo)`);
+                  }
                 }}
               >
                 {item}

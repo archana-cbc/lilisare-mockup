@@ -114,35 +114,6 @@ function DashboardContent() {
 
   return (
     <div className="min-h-screen bg-[var(--bg,#F7F7F4)] flex flex-col">
-      {/* THIN DEMO BANNER ON EVERY SCREEN */}
-      <div className="bg-[#1B381E] text-white px-4 py-2 text-xs flex flex-wrap items-center justify-between border-b border-white/10 shrink-0 z-30">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-white/80">Demo mode:</span>
-          <span className="font-bold text-white">You are viewing the {currentWorkspace.name} workspace</span>
-          <span className="bg-white/15 text-emerald-300 px-2 py-0.5 rounded text-[10px] font-semibold hidden sm:inline border border-white/10">
-            {currentWorkspace.category}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2.5">
-          <button
-            type="button"
-            onClick={() => setIsWorkspacePickerOpen(true)}
-            className="bg-white/15 hover:bg-white/25 text-white font-semibold px-2.5 py-1 rounded-lg transition text-xs border border-white/15"
-          >
-            Switch workspace
-          </button>
-          <button
-            type="button"
-            onClick={logout}
-            className="text-white/70 hover:text-white transition text-xs"
-          >
-            Log out
-          </button>
-        </div>
-      </div>
-
       <div className="flex-1 flex min-h-0">
         <Sidebar />
         <div className="flex-1 flex flex-col min-w-0">
