@@ -1,28 +1,29 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useApp } from '@/context/AppContext';
 import { CL, CG, STAFF } from '@/data/mockData';
 
 // Types
-interface FlagItem {
+export interface FlagItem {
   phrase: string;
   ruleName: string;
+  category: 'wording' | 'safety' | 'missing';
   plainWhy: string;
   plainFix: string;
+  suggestedReplacement?: string;
   isUrgentSafety?: boolean;
 }
 
-interface QuestionItem {
+export interface QuestionItem {
   id: string;
   question: string;
   answer?: string;
   isAnswered: boolean;
-
   voiceRecorded?: boolean;
 }
 
-interface AttachmentItem {
+export interface AttachmentItem {
   id: string;
   name: string;
   type: 'Wound/skin photo' | 'Incident' | 'Signed form' | 'Doctor\'s order' | 'Audio recording' | 'Other';
@@ -32,14 +33,24 @@ interface AttachmentItem {
   url?: string;
 }
 
-interface NoteRecord {
+export interface ClientVisitItem {
+  id: string;
+  date: string;
+  time: string;
+  caregiverName: string;
+  evvStatus: 'Verified' | 'Exception';
+  evvDetails: string;
+  tasks: string[];
+}
+
+export interface NoteRecord {
   id: string;
   clientId: string;
   clientName: string;
   clientAge: number;
   clientDob: string;
   caregiverName: string;
-  program: 'IHSS' | 'CFC' | 'HCBS' | 'IRSS' | 'HMA';
+  program: 'IHSS' | 'CFC' | 'HCBS' | 'IRSS' | 'CNA' | 'HMA' | 'Personal Care';
   visitDate: string;
   visitTime: string;
   evvStatus: 'Verified' | 'Exception';
@@ -68,7 +79,7 @@ interface NoteRecord {
   }>;
 }
 
-interface ComplianceRule {
+export interface ComplianceRule {
   id: string;
   name: string;
   description: string;
@@ -82,7 +93,7 @@ interface ComplianceRule {
   lastUpdatedAt: string;
 }
 
-// Initial Mock Notes (Consistent with CL and CG)
+// 4 Canonical Sample Notes (incorporating vague, subjective, missing details, and safety-risk scenarios)
 const INITIAL_NOTES: NoteRecord[] = [
   {
     id: 'NOTE-101',
@@ -95,7 +106,7 @@ const INITIAL_NOTES: NoteRecord[] = [
     visitDate: 'Nov 17, 2026',
     visitTime: '8:00 AM – 11:30 AM',
     evvStatus: 'Verified',
-    evvDetails: 'Clock-in 8:02 AM · GPS Match (452 Elm St) · Verified',
+    evvDetails: 'Clock-in 8:02 AM · GPS Match (452 Elm St, Denver CO) · Verified',
     tasks: ['Meal Preparation', 'Morning Hygiene', 'Medication Reminder'],
     status: 'Urgent',
     isUrgentSafety: true,
@@ -104,42 +115,54 @@ const INITIAL_NOTES: NoteRecord[] = [
     flags: [
       {
         phrase: 'difficult',
-        ruleName: 'Objective language rule',
-        plainWhy: 'Words like "difficult" describe an emotional reaction rather than what actually happened.',
+        ruleName: 'Objective language rule (10 CCR 2505-10 § 8.510)',
+        category: 'wording',
+        plainWhy: 'Words like "difficult" describe an emotional reaction rather than factual observation.',
         plainFix: 'Describe what the client did: "Client declined breakfast at 8:40 AM."',
+        suggestedReplacement: 'declined offered meal',
       },
       {
-        phrase: 'refused to eat',
-        ruleName: 'Documenting client choices',
-        plainWhy: 'State rules require writing down what food was offered and what alternatives you tried.',
+        phrase: 'refused to eat breakfast',
+        ruleName: 'Documenting client choices & nutrition',
+        category: 'missing',
+        plainWhy: 'State rules require writing down what specific food was offered and what alternatives were tried.',
         plainFix: 'Name the specific meal offered and how you followed up.',
+        suggestedReplacement: 'declined oatmeal at 8:40 AM and was offered alternative fruit',
       },
       {
         phrase: 'made her eat anyway',
         ruleName: 'Safety escalation: possible physical force',
-        plainWhy: 'This sounds like physical force or insistence without client consent. State rules require immediate supervisor review.',
+        category: 'safety',
+        plainWhy: 'This sounds like physical force or insistence without consent. State rules require clinical supervisor review.',
         plainFix: 'Do not reword this. A clinical supervisor and RN must review the visit.',
+        suggestedReplacement: 're-offered meal with verbal encouragement after 15 minutes',
         isUrgentSafety: true,
       },
     ],
     suggestedText:
-      'Client declined oatmeal at 8:40 AM. Caregiver offered [add what alternative was offered] after 15 minutes; client [add client response]. Blood pressure medication was [add medication administration status] per care plan.',
-    placeholders: ['[add what alternative was offered]', '[add client response]', '[add medication administration status]'],
+      'Client declined oatmeal at 8:40 AM. Caregiver offered [add alternative offered] after 15 minutes; client accepted yogurt and sliced fruit. Morning hypertension medication was reminded per care plan at 9:05 AM with water.',
+    placeholders: ['[add alternative offered]'],
     questions: [
       {
         id: 'q1',
-        question: 'What specific food or drink was offered when Marisol declined breakfast?',
-        isAnswered: false,
+        question: 'What specific food was offered when Marisol initially declined breakfast?',
+        answer: 'Prepared hot oatmeal, but Marisol wanted yogurt with sliced bananas instead.',
+        isAnswered: true,
+        voiceRecorded: false,
       },
       {
         id: 'q2',
-        question: 'How long did you wait before re-offering, and did you use any physical prompting?',
-        isAnswered: false,
+        question: 'Did you use any physical restraint or physical force when encouraging her to eat?',
+        answer: 'No physical force whatsoever. I just placed the bowl near her and verbally encouraged her until she was ready.',
+        isAnswered: true,
+        voiceRecorded: true,
       },
       {
         id: 'q3',
-        question: 'Was the supervising nurse or family notified about medication timing without food?',
-        isAnswered: false,
+        question: 'Was the morning blood pressure medication taken on schedule with water?',
+        answer: 'Yes, taken at 9:05 AM with a full glass of water without issue.',
+        isAnswered: true,
+        voiceRecorded: false,
       },
     ],
     attachments: [
@@ -168,12 +191,94 @@ const INITIAL_NOTES: NoteRecord[] = [
       ],
     },
     timeline: [
-      { title: 'Note dictated and submitted via app', actor: 'Rosa Vega', time: 'Nov 17 · 11:35 AM' },
-      { title: 'Flagged for supervisor safety check', actor: 'System Rule LS-02', time: 'Nov 17 · 11:36 AM', note: 'Safety keywords detected' },
+      { title: 'Note dictated and submitted via mobile app', actor: 'Rosa Vega', time: 'Nov 17 · 11:35 AM' },
+      { title: 'Flagged for supervisor safety check', actor: 'System Rule R-02', time: 'Nov 17 · 11:36 AM', note: 'Safety escalation keywords detected' },
     ],
   },
   {
     id: 'NOTE-102',
+    clientId: 'C-1007',
+    clientName: 'Walter Hayes',
+    clientAge: 74,
+    clientDob: 'Mar 10, 1952',
+    caregiverName: 'Beth Hayes',
+    program: 'CFC',
+    visitDate: 'Nov 17, 2026',
+    visitTime: '9:00 AM – 12:00 PM',
+    evvStatus: 'Verified',
+    evvDetails: 'Clock-in 9:00 AM · Clock-out 12:01 PM · GPS Match · Verified',
+    tasks: ['CFC Homemaking', 'Ambulation Supervision', 'Meal Preparation'],
+    status: 'Needs fix',
+    isUrgentSafety: false,
+    originalText: 'Did good today, took care of everything, normal routine and walked around the house. No complaints.',
+    flags: [
+      {
+        phrase: 'Did good today',
+        ruleName: 'Objective language rule (10 CCR 2505-10 § 8.510)',
+        category: 'wording',
+        plainWhy: '"Did good" is vague and subjective. State auditors require observable descriptions of client functional status.',
+        plainFix: 'State specific observations: "Client ambulated with single-point cane without reports of pain."',
+        suggestedReplacement: 'Client reported feeling well and in good spirits',
+      },
+      {
+        phrase: 'took care of everything',
+        ruleName: 'Clear task documentation',
+        category: 'missing',
+        plainWhy: 'Does not substantiate which authorized care tasks were completed during the 3-hour visit.',
+        plainFix: 'List tasks: assisted with bed linen change, cleaned bathroom fixtures, prepared lunch.',
+        suggestedReplacement: 'completed scheduled CFC homemaking and personal care tasks per plan',
+      },
+      {
+        phrase: 'normal routine',
+        ruleName: 'Routine care verification',
+        category: 'wording',
+        plainWhy: '"Normal routine" does not prove individual care was delivered according to the approved service plan.',
+        plainFix: 'Specify client mobility exercises and meal items.',
+        suggestedReplacement: 'conducted routine 20-minute indoor mobility exercise',
+      },
+    ],
+    suggestedText:
+      'Arrived at 9:00 AM. Assisted client with scheduled CFC homemaking tasks, including bed linen change, kitchen sanitization, and laundry assistance. Supervised client during [add duration] indoor mobility exercise using single-point cane. Client demonstrated steady gait with zero loss of balance.',
+    placeholders: ['[add duration]'],
+    questions: [
+      {
+        id: 'q1',
+        question: 'How long did Walter walk around the house, and did he use his prescribed cane?',
+        answer: 'Walked for 20 minutes in hallway using cane. No staggering.',
+        isAnswered: true,
+        voiceRecorded: false,
+      },
+      {
+        id: 'q2',
+        question: 'Which specific homemaking tasks were completed during this 3-hour shift?',
+        answer: 'Washed and folded two loads of laundry, disinfected kitchen counters, and made lunch.',
+        isAnswered: true,
+        voiceRecorded: false,
+      },
+    ],
+    attachments: [],
+    assignedReviewer: 'Maya R.',
+    inCaseload: true,
+    clientContext: {
+      authorizedHours: '18.0 hrs/week · CFC Community First Choice',
+      carePlanGoals: [
+        'Safe indoor ambulation with single-point cane',
+        'Independent living environment maintenance via homemaking assistance',
+        'Hydration and nutritious meal prep',
+      ],
+      lastThreeNotes: [
+        'Nov 15: Cleaned kitchen and assisted with shower transfer. Walter walked 15 min.',
+        'Nov 12: Prepared chicken soup for lunch. Assisted with light housekeeping.',
+        'Nov 10: Client in cheerful spirits. Practiced cane ambulation indoors.',
+      ],
+    },
+    timeline: [
+      { title: 'Note submitted', actor: 'Beth Hayes', time: 'Nov 17 · 12:05 PM' },
+      { title: 'Automatic check flagged 3 vague phrases', actor: 'System Rule R-01', time: 'Nov 17 · 12:06 PM' },
+    ],
+  },
+  {
+    id: 'NOTE-103',
     clientId: 'C-1006',
     clientName: 'Josefina Ruiz',
     clientAge: 72,
@@ -184,115 +289,67 @@ const INITIAL_NOTES: NoteRecord[] = [
     visitTime: '10:00 AM – 1:00 PM',
     evvStatus: 'Verified',
     evvDetails: 'Clock-in 10:01 AM · Clock-out 1:02 PM · GPS Match · Verified',
-    tasks: ['Delegated G-Tube Care', 'Medication Administration', 'Bathing'],
-    status: 'Needs fix',
-    isUrgentSafety: false,
-    originalText: 'Gave meds and did normal stuff all shift. Josefina was fine and had no problems.',
+    tasks: ['Delegated G-Tube Care', 'Medication Administration', 'Bed Bath'],
+    status: 'Urgent',
+    isUrgentSafety: true,
+    originalText:
+      'Client refused to let me help transfer, so I forced her to sit down in the chair and she fell against the wall, minor bruise on left elbow. Gave midday meds.',
     flags: [
       {
-        phrase: 'Gave meds',
-        ruleName: 'Specific times for medications',
-        plainWhy: 'State rules require the exact time and route (mouth or G-tube) for every medication.',
-        plainFix: 'Write: "Administered midday meds via G-tube at 11:15 AM."',
+        phrase: 'forced her to sit down',
+        ruleName: 'Mandatory Safety Rule: Physical force or restraint',
+        category: 'safety',
+        plainWhy: 'Physical force or non-consensual physical handling is strictly prohibited. State Medicaid critical incident investigation required.',
+        plainFix: 'Must NOT be rewritten. Requires immediate supervisor intervention.',
+        isUrgentSafety: true,
       },
       {
-        phrase: 'normal stuff all shift',
-        ruleName: 'Clear task descriptions',
-        plainWhy: '"Normal stuff" does not prove to state auditors what care tasks were actually completed.',
-        plainFix: 'List the specific tasks completed: bathing, stoma inspection, water flush.',
+        phrase: 'she fell against the wall, minor bruise',
+        ruleName: 'Mandatory Incident Escalation: Client Fall with Injury',
+        category: 'safety',
+        plainWhy: 'Any fall resulting in bruising, pain, or skin compromise requires a formal 24-hour state incident report.',
+        plainFix: 'Escalate to RN Supervisor immediately. Complete incident report form.',
+        isUrgentSafety: true,
+      },
+      {
+        phrase: 'Gave midday meds',
+        ruleName: 'Exact times for nursing delegation',
+        category: 'missing',
+        plainWhy: 'HMA delegated medications require exact time, route (G-tube), and water flush volume.',
+        plainFix: 'Record exact time and water flush ml.',
       },
     ],
-    suggestedText:
-      'Administered delegated midday medications via G-tube at [add exact time]. Flushed tube with 30ml water before and after per HMA protocol. Inspected insertion site; skin intact with no redness. Assisted with bed bath.',
-    placeholders: ['[add exact time]'],
-    questions: [
+    suggestedText: '', // Empty because safety escalation blocks rewrite!
+    placeholders: [],
+    questions: [],
+    attachments: [
       {
-        id: 'q1',
-        question: 'At what exact time were the midday medications given through the G-tube?',
-        isAnswered: false,
-      },
-      {
-        id: 'q2',
-        question: 'Did you flush the tube with 30ml water before and after as outlined in the care plan?',
-        isAnswered: false,
+        id: 'att-bruise',
+        name: 'Elbow_Bruise_Photo.jpg',
+        type: 'Wound/skin photo',
+        size: '1.8 MB',
+        uploadedBy: 'Luis Ruiz',
+        uploadedAt: 'Nov 17 · 1:04 PM',
       },
     ],
-    attachments: [],
     assignedReviewer: 'Maya R.',
     inCaseload: true,
     clientContext: {
       authorizedHours: '21.0 hrs/week · HMA Skilled Nursing Delegation',
       carePlanGoals: [
         'Gastrostomy tube flushes and scheduled medication delivery',
-        'Daily skin inspection of G-tube insertion site',
-        'Bed bath and pressure-relief repositioning',
+        'Daily skin inspection of G-tube insertion site and pressure areas',
+        'Bed bath and two-person mechanical transfer assistance',
       ],
       lastThreeNotes: [
-        'Nov 16: Administered midday meds at 11:30 AM via G-tube. Flushed with 30ml water. Dressing dry.',
-        'Nov 15: Morning feed administered. Stoma clean, no discharge. Repositioned to left lateral.',
-        'Nov 14: Meds given at 11:15 AM. Client tolerated bath and hair washing well.',
+        'Nov 16: Administered midday meds at 11:30 AM via G-tube. Flushed with 30ml water. Dressing clean.',
+        'Nov 15: Morning feed administered. Stoma clean, no redness. Repositioned safely.',
+        'Nov 14: Meds given at 11:15 AM. Client tolerated bath and transfer well.',
       ],
     },
     timeline: [
       { title: 'Note submitted', actor: 'Luis Ruiz', time: 'Nov 17 · 1:05 PM' },
-      { title: 'Automatic check flagged 2 phrases', actor: 'System', time: 'Nov 17 · 1:06 PM' },
-    ],
-  },
-  {
-    id: 'NOTE-103',
-    clientId: 'C-1005',
-    clientName: 'Aiden Park',
-    clientAge: 16,
-    clientDob: 'May 04, 2010',
-    caregiverName: 'Grace Park',
-    program: 'HCBS',
-    visitDate: 'Nov 16, 2026',
-    visitTime: '2:00 PM – 5:00 PM',
-    evvStatus: 'Verified',
-    evvDetails: 'Clock-in 2:00 PM · Verified',
-    tasks: ['Community Mentorship', 'Coping Strategies'],
-    status: 'Waiting on caregiver',
-    isUrgentSafety: false,
-    originalText: 'Aiden is acting up again today, had to calm him down for an hour before doing homework.',
-    flags: [
-      {
-        phrase: 'acting up',
-        ruleName: 'Objective language rule',
-        plainWhy: '"Acting up" sounds judgmental. Describe the specific behavior you saw (pacing, shouting, crying).',
-        plainFix: 'Write: "Aiden was pacing and speaking loudly."',
-      },
-    ],
-    suggestedText:
-      'Aiden showed vocal agitation and pacing beginning at [add time]. Caregiver used sensory calming protocol and [add calming activity] for 45 minutes until Aiden returned to baseline. Completed 30 minutes of math homework.',
-    placeholders: ['[add time]', '[add calming activity]'],
-    questions: [
-      {
-        id: 'q1',
-        question: 'What specific behaviors was Aiden showing (e.g. pacing, shouting, repetitive questions)?',
-        isAnswered: true,
-        answer: 'He was pacing in the living room and repeating that he was anxious about his test.',
-        voiceRecorded: true,
-      },
-    ],
-    attachments: [],
-    assignedReviewer: 'Jon P.',
-    inCaseload: false, // outside Maya's caseload
-    clientContext: {
-      authorizedHours: '15.0 hrs/week · HCBS Youth Mentorship',
-      carePlanGoals: [
-        'Practice self-regulation strategies when frustrated',
-        'Complete academic homework routine with minimal resistance',
-      ],
-      lastThreeNotes: [
-        'Nov 15: Practiced deep breathing exercises when frustrated with science. Completed 45 min study.',
-        'Nov 14: Community outing to library. Checked out books independently.',
-        'Nov 13: Calm shift, guided after-school snack and homework schedule.',
-      ],
-    },
-    timeline: [
-      { title: 'Note submitted', actor: 'Grace Park', time: 'Nov 16 · 5:08 PM' },
-      { title: 'Question sent to caregiver', actor: 'Jon P.', time: 'Nov 16 · 5:30 PM' },
-      { title: 'Caregiver voice answer received', actor: 'Grace Park', time: 'Nov 16 · 6:15 PM' },
+      { title: 'CRITICAL SAFETY TRIGGER: Physical force & fall with injury detected', actor: 'System Rule R-02', time: 'Nov 17 · 1:05 PM' },
     ],
   },
   {
@@ -302,56 +359,106 @@ const INITIAL_NOTES: NoteRecord[] = [
     clientAge: 19,
     clientDob: 'Aug 11, 2007',
     caregiverName: 'Karen Brandt',
-    program: 'IHSS',
-    visitDate: 'Nov 15, 2026',
+    program: 'HCBS',
+    visitDate: 'Nov 17, 2026',
     visitTime: '1:00 PM – 4:00 PM',
     evvStatus: 'Exception',
     evvDetails: 'Clock-out was 42 min after scheduled shift (requires reason code)',
-    tasks: ['Community Integration', 'Life Skills'],
-    status: 'Approved',
+    tasks: ['Community Integration', 'Life Skills', 'Medication Reminder'],
+    status: 'Needs fix',
     isUrgentSafety: false,
-    originalText:
-      'Assisted Eli with community skills outing to King Soopers per care plan goal: budgeting and grocery item selection. Eli selected 4 items independently with verbal prompts. Shift ran late due to transportation delay.',
-    flags: [],
+    originalText: 'Fed client lunch and walked around, gave morning pills and did exercises.',
+    flags: [
+      {
+        phrase: 'lunch',
+        ruleName: 'Specific nutritional documentation',
+        category: 'missing',
+        plainWhy: 'State rules require identifying what meal was served to confirm nutritional adequacy.',
+        plainFix: 'Name the specific food items prepared.',
+        suggestedReplacement: 'lunch of [add meal items]',
+      },
+      {
+        phrase: 'walked around',
+        ruleName: 'Community goal tracking',
+        category: 'missing',
+        plainWhy: 'Specify location and duration to demonstrate care plan community integration goal.',
+        plainFix: 'Include duration and location.',
+        suggestedReplacement: 'supervised community walk for [add duration]',
+      },
+      {
+        phrase: 'morning pills',
+        ruleName: 'Specific medication identification',
+        category: 'missing',
+        plainWhy: 'Name of medication and scheduled time must be documented.',
+        plainFix: 'Specify medication name and administration time.',
+        suggestedReplacement: 'prompted scheduled [add medication name] at [add exact time]',
+      },
+    ],
     suggestedText:
-      'Assisted Eli with community skills outing to King Soopers per care plan goal: budgeting and grocery item selection. Eli selected 4 items independently with verbal prompts. Shift ran late due to transportation delay.',
-    placeholders: [],
-    questions: [],
+      'Assisted Eli with lunch ([add meal items]) at [add lunch time]. Supervised community mobility walk for [add duration] around the neighborhood per community integration goal. Prompted scheduled medication ([add medication name]) at [add exact time] with water.',
+    placeholders: ['[add meal items]', '[add lunch time]', '[add duration]', '[add medication name]', '[add exact time]'],
+    questions: [
+      {
+        id: 'q1',
+        question: 'What specific food was prepared for Eli\'s lunch?',
+        answer: 'Turkey and avocado sandwich on wheat with sliced cantaloupe and milk.',
+        isAnswered: true,
+        voiceRecorded: false,
+      },
+      {
+        id: 'q2',
+        question: 'How long did you walk outside and where did you go?',
+        answer: 'Walked for 35 minutes along the greenway trail.',
+        isAnswered: true,
+        voiceRecorded: true,
+      },
+      {
+        id: 'q3',
+        question: 'Which specific medication was prompted and at what exact time?',
+        answer: 'Levothyroxine 50mcg at 1:15 PM with water.',
+        isAnswered: true,
+        voiceRecorded: false,
+      },
+    ],
     attachments: [
       {
-        id: 'att-2',
+        id: 'att-goal',
         name: 'Community_Goal_Tracking_Form.pdf',
         type: 'Signed form',
         size: '240 KB',
         uploadedBy: 'Karen Brandt',
-        uploadedAt: 'Nov 15 · 4:50 PM',
+        uploadedAt: 'Nov 17 · 4:50 PM',
       },
     ],
     assignedReviewer: 'Maya R.',
     inCaseload: true,
     clientContext: {
-      authorizedHours: '32.0 hrs/week · IHSS Child Care & Attendant',
-      carePlanGoals: ['Community safety awareness', 'Money handling and shopping skills', 'Hygiene reminders'],
+      authorizedHours: '32.0 hrs/week · HCBS Supported Living',
+      carePlanGoals: [
+        'Community safety awareness & neighborhood ambulation',
+        'Money handling and shopping skills',
+        'Nutrition and scheduled medication prompting',
+      ],
       lastThreeNotes: [
+        'Nov 16: Outing to King Soopers. Eli selected 4 items independently with verbal prompts.',
         'Nov 14: Assisted Eli with handwashing and snack prep. Worked on vocabulary flashcards.',
-        'Nov 13: Community integration at local recreation center. Practiced waiting in turn.',
         'Nov 12: Supervised safety during afternoon park outing. Positive mood throughout.',
       ],
     },
     timeline: [
-      { title: 'Note submitted', actor: 'Karen Brandt', time: 'Nov 15 · 4:45 PM' },
-      { title: 'Reviewed & Approved', actor: 'Maya R.', time: 'Nov 15 · 5:10 PM' },
+      { title: 'Note submitted', actor: 'Karen Brandt', time: 'Nov 17 · 4:45 PM' },
+      { title: 'Automated check flagged 3 missing details', actor: 'System Rule R-01', time: 'Nov 17 · 4:46 PM' },
     ],
   },
 ];
 
-// Initial Rules
+// Initial Rules for Rules Tab
 const INITIAL_RULES: ComplianceRule[] = [
   {
     id: 'R-01',
     name: 'Objective facts only (no emotional or judgmental words)',
     description: 'Requires factual, observable descriptions rather than characterizations (e.g. difficult, stubborn, crazy).',
-    appliesTo: ['IHSS', 'CFC', 'HCBS', 'IRSS', 'HMA'],
+    appliesTo: ['IHSS', 'CFC', 'HCBS', 'IRSS', 'HMA', 'Personal Care'],
     severity: 'High',
     exampleBad: 'Client was difficult and aggressive.',
     exampleGood: 'Client raised voice and paced hallway for 15 minutes before accepting redirection.',
@@ -404,54 +511,61 @@ const INITIAL_RULES: ComplianceRule[] = [
 export const AuditPage: React.FC = () => {
   const { showToast, addFeed, deIdentify, navigate } = useApp();
 
-  // 1. Four Top Tabs
-  const [activeTab, setActiveTab] = useState<'review' | 'new-note' | 'quality' | 'rules'>('review');
-
-  // Help Guide Modal state
-  const [showHelpGuide, setShowHelpGuide] = useState(false);
+  // Top Tabs: 'coach' (renamed from 'review') | 'new-note' | 'quality' | 'rules'
+  const [activeTab, setActiveTab] = useState<'coach' | 'new-note' | 'quality' | 'rules'>('coach');
 
   // Notes state
   const [notes, setNotes] = useState<NoteRecord[]>(INITIAL_NOTES);
   const [selectedNoteId, setSelectedNoteId] = useState<string>('NOTE-101');
 
-  // Review Queue Filters
-  const [filterStatus, setFilterStatus] = useState<string>('All');
-  const [filterProgram, setFilterProgram] = useState<string>('All');
-  const [filterPriority, setFilterPriority] = useState<string>('All');
-  const [searchQuery, setSearchQuery] = useState('');
+  // Column 1 Filters
+  const [clientSearch, setClientSearch] = useState('');
+  const [notesAttentionFilter, setNotesAttentionFilter] = useState<'All' | 'Needs fix' | 'Urgent' | 'Waiting on caregiver' | 'Approved'>('All');
+  const [caseloadOnly, setCaseloadOnly] = useState(true);
 
-  // HIPAA Masking toggle
-  const [revealId, setRevealId] = useState(false);
-  const [revealDob, setRevealDob] = useState(false);
-  const [showSessionTimeoutModal, setShowSessionTimeoutModal] = useState(false);
+  // Column 2 Note Input Area State
+  const [noteInputTab, setNoteInputTab] = useState<'caregiver' | 'paste' | 'upload'>('caregiver');
+  const [currentCaregiverText, setCurrentCaregiverText] = useState('');
+  const [pastedText, setPastedText] = useState('');
+  const [uploadedFile, setUploadedFile] = useState<{ name: string; size: string; transcript: string } | null>(null);
+  const [isDictating, setIsDictating] = useState(false);
+  const [activeHighlightPopover, setActiveHighlightPopover] = useState<FlagItem | null>(null);
 
-  // Open Note interaction state
-  const [activeFlagPopover, setActiveFlagPopover] = useState<FlagItem | null>(null);
+  // Column 3 Refinement Toolbar & State
+  const [refineFormat, setRefineFormat] = useState<'narrative' | 'soap' | 'bullets' | 'state'>('narrative');
+  const [refineLength, setRefineLength] = useState<'short' | 'standard' | 'detailed'>('standard');
+  const [refineProgram, setRefineProgram] = useState<'IHSS' | 'CFC' | 'HCBS' | 'IRSS' | 'CNA' | 'HMA' | 'Personal Care'>('IHSS');
+  const [refineLanguage, setRefineLanguage] = useState<'en' | 'es'>('en');
+  const [includeOptions, setIncludeOptions] = useState({
+    times: true,
+    response: true,
+    tasks: true,
+    followUp: true,
+  });
+  const [isRefining, setIsRefining] = useState(false);
+  const [refineProgressText, setRefineProgressText] = useState('Checking rules… formatting…');
+  const [diffView, setDiffView] = useState<'clean' | 'diff'>('clean');
+  const [editableRefinedText, setEditableRefinedText] = useState('');
+  const [isEditingRefinedManually, setIsEditingRefinedManually] = useState(false);
+  const [amberBlanks, setAmberBlanks] = useState<Record<string, string>>({});
   const [showQuestions, setShowQuestions] = useState(true);
+  const [questionsAnswerState, setQuestionsAnswerState] = useState<Record<string, string>>({});
   const [showMoreActions, setShowMoreActions] = useState(false);
-  const [isEditingManually, setIsEditingManually] = useState(false);
-  const [editableText, setEditableText] = useState('');
-  const [showDetailsDrawer, setShowDetailsDrawer] = useState(false);
-  const [detailsTab, setDetailsTab] = useState<'summary' | 'rules' | 'client' | 'history'>('summary');
+
+  // Supervisor Safety Override state
+  const [safetyOverrideDismissed, setSafetyOverrideDismissed] = useState(false);
   const [showIncidentModal, setShowIncidentModal] = useState(false);
+  const [incidentTitle, setIncidentTitle] = useState('');
+  const [incidentSeverity, setIncidentSeverity] = useState('Critical - Safety Escalation');
 
-  // New Note Wizard State
-  const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4>(1);
-  const [wizardClientId, setWizardClientId] = useState('C-1001');
-  const [wizardVisitDate, setWizardVisitDate] = useState('Today, Nov 17 · 8:00 AM - 11:30 AM (EVV Verified)');
-  const [inputMode, setInputMode] = useState<'speak' | 'upload' | 'type'>('speak');
-  const [roughText, setRoughText] = useState('');
-  const [formattedText, setFormattedText] = useState('');
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordSeconds, setRecordSeconds] = useState(0);
-  const [recordingLanguage, setRecordingLanguage] = useState<'English' | 'Spanish'>('English');
-  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
-  const [isPhonePreviewOpen, setIsPhonePreviewOpen] = useState(false);
-  const [draftSavedAt, setDraftSavedAt] = useState<string>('just now');
-  const [newNoteAttachments, setNewNoteAttachments] = useState<AttachmentItem[]>([]);
-  const [showAttachmentUploadModal, setShowAttachmentUploadModal] = useState(false);
+  // Details Drawer (Right edge collapsible)
+  const [showDetailsDrawer, setShowDetailsDrawer] = useState(false);
+  const [detailsDrawerTab, setDetailsDrawerTab] = useState<'rules' | 'context' | 'history' | 'audit'>('rules');
 
-  // Assistant Chat State (Merged LiliSare Assistant)
+  // Responsive Stepper for Small Screens (1 -> 2 -> 3)
+  const [responsiveStep, setResponsiveStep] = useState<1 | 2 | 3>(1);
+
+  // Floating Assistant Chat State
   const [showAssistant, setShowAssistant] = useState(false);
   const [assistantMessages, setAssistantMessages] = useState<
     Array<{
@@ -463,7 +577,7 @@ export const AuditPage: React.FC = () => {
   >([
     {
       sender: 'assistant',
-      text: 'Hello Maya! I can help you review this care note for Marisol V. Ask me a question or tap one of the shortcuts below.',
+      text: 'Hello Maya! I am scoped to this visit note. I can help refine wording, verify Medicaid rules, or prepare state incident documentation.',
     },
   ]);
   const [assistantInput, setAssistantInput] = useState('');
@@ -473,8 +587,8 @@ export const AuditPage: React.FC = () => {
     onConfirm: () => void;
   } | null>(null);
 
-  // Rules Tab state
-  const [rules, setRules] = useState<ComplianceRule[]>(INITIAL_RULES);
+  // Rules Tab state (preservation of Tab 4)
+  const [rulesList, setRulesList] = useState<ComplianceRule[]>(INITIAL_RULES);
   const [showProgramSettings, setShowProgramSettings] = useState(false);
   const [programRequirements, setProgramRequirements] = useState<Record<string, boolean>>({
     IHSS: true,
@@ -483,135 +597,169 @@ export const AuditPage: React.FC = () => {
     IRSS: true,
     HMA: true,
   });
-  const [deleteAudioAfterApproval, setDeleteAudioAfterApproval] = useState(false);
 
-  // Currently Selected Note
-  const currentNote = notes.find((n) => n.id === selectedNoteId) || notes[0];
+  // New Note Tab State (preservation of Tab 2)
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4>(1);
+  const [wizardClientId, setWizardClientId] = useState('C-1001');
+  const [roughText, setRoughText] = useState('');
+  const [formattedWizardText, setFormattedWizardText] = useState('');
 
+  // Active Note computation
+  const activeNote = useMemo(() => {
+    return notes.find((n) => n.id === selectedNoteId) || notes[0];
+  }, [notes, selectedNoteId]);
+
+  // Sync state whenever active note changes
   useEffect(() => {
-    if (currentNote) {
-      setEditableText(currentNote.suggestedText);
-      setIsEditingManually(false);
-      setActiveFlagPopover(null);
+    if (activeNote) {
+      setCurrentCaregiverText(activeNote.originalText);
+      setPastedText('');
+      setUploadedFile(null);
+      setSafetyOverrideDismissed(false);
+      setRefineProgram(activeNote.program);
+      setActiveHighlightPopover(null);
+      setIsEditingRefinedManually(false);
+      setAmberBlanks({});
+
+      // Set initial answers for questions
+      const initialAnswers: Record<string, string> = {};
+      activeNote.questions.forEach((q) => {
+        initialAnswers[q.id] = q.answer || '';
+      });
+      setQuestionsAnswerState(initialAnswers);
     }
   }, [selectedNoteId]);
 
-  // Audio Recording Simulation Timer
-  useEffect(() => {
-    let t: NodeJS.Timeout;
-    if (isRecording) {
-      t = setInterval(() => setRecordSeconds((s) => s + 1), 1000);
-    } else {
-      setRecordSeconds(0);
+  // Compute if note contains safety risk
+  const isSafetyRiskDetected = useMemo(() => {
+    if (safetyOverrideDismissed) return false;
+    const textToCheck = (noteInputTab === 'caregiver' ? currentCaregiverText : pastedText || currentCaregiverText).toLowerCase();
+    return (
+      textToCheck.includes('made her eat') ||
+      textToCheck.includes('forced') ||
+      textToCheck.includes('fell against') ||
+      textToCheck.includes('bruise') ||
+      textToCheck.includes('injury') ||
+      activeNote.isUrgentSafety
+    );
+  }, [currentCaregiverText, pastedText, noteInputTab, activeNote, safetyOverrideDismissed]);
+
+  // Generate simulated refined text based on chosen parameters
+  const generatedRefinedNote = useMemo(() => {
+    if (isSafetyRiskDetected) {
+      return '';
     }
-    return () => clearInterval(t);
-  }, [isRecording]);
 
-  // Canvas waveform ref
-  const waveformRef = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    if (!isRecording || !waveformRef.current) return;
-    const canvas = waveformRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    let animId: number;
+    if (refineLanguage === 'es') {
+      return 'A las 8:40 AM, la clienta declinó la avena ofrecida. La cuidadora esperó 15 minutos y brindó apoyo verbal con respeto, ofreciendo yogur y tostadas, los cuales la clienta aceptó favorablemente. Se brindó asistencia en higiene matutina y transferencias seguras con andador rodante. A las 9:05 AM, se recordó la toma de medicamento para la presión arterial con agua per plan de cuidado.';
+    }
 
-    const draw = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = '#3E6B2B';
-      const count = 30;
-      const w = canvas.width / count;
-      for (let i = 0; i < count; i++) {
-        const h = Math.random() * (canvas.height - 8) + 4;
-        const x = i * w;
-        const y = (canvas.height - h) / 2;
-        ctx.fillRect(x + 1, y, w - 2, h);
+    if (activeNote.clientId === 'C-1007') {
+      // Walter Hayes (CFC)
+      if (refineFormat === 'soap') {
+        return 'S: Client stated feeling well and ready for scheduled morning CFC care.\nO: Completed bed linen change and bathroom sanitization. Supervised 20-minute indoor mobility routine using prescribed cane.\nA: Client maintains functional indoor mobility and safe living environment.\nP: Continue scheduled CFC homemaking twice weekly.';
       }
-      animId = requestAnimationFrame(draw);
-    };
-    draw();
-    return () => cancelAnimationFrame(animId);
-  }, [isRecording]);
-
-  // Filter Queue
-  const filteredQueue = notes.filter((n) => {
-    if (filterStatus !== 'All' && n.status !== filterStatus) return false;
-    if (filterProgram !== 'All' && n.program !== filterProgram) return false;
-    if (filterPriority === 'Urgent first' && !n.isUrgentSafety) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchCg = n.caregiverName.toLowerCase().includes(q);
-      const matchCl = n.clientName.toLowerCase().includes(q);
-      const matchTxt = n.originalText.toLowerCase().includes(q);
-      if (!matchCg && !matchCl && !matchTxt) return false;
+      if (refineFormat === 'bullets') {
+        return '• Tasks performed: Bed linen change, bathroom sanitization, meal preparation, mobility supervision.\n• Client response: Cooperative, engaged, completed 20 min indoor ambulation without fatigue.\n• Observations: Steady gait with cane, clear living area free of trip hazards.\n• Follow-up: Continue scheduled CFC homemaking routine.';
+      }
+      if (refineFormat === 'state') {
+        return 'COLORADO CFC SERVICE DOCUMENTATION\nClient: Walter Hayes | Date: Nov 17, 2026 | Time: 9:00 AM – 12:00 PM\n1. Homemaking: Changed bed linens, disinfected kitchen surfaces, assisted with laundry.\n2. Mobility Supervision: Observed 20 min cane ambulation in hallway with steady gait.\n3. Client Response: Cooperative, alert, no discomfort reported.';
+      }
+      if (refineLength === 'short') {
+        return 'Assisted Walter with morning personal care and light homemaking tasks. Client ambulated safely indoors for 20 minutes with single-point cane; no pain reported.';
+      }
+      if (refineLength === 'detailed') {
+        return 'Visit conducted 9:00 AM – 12:00 PM per CFC authorization. Completed scheduled homemaking tasks: linen change, kitchen counter sanitization, and laundry assistance. Supervised client during mobility exercise: 20 minutes walking in hallway with single-point cane, maintaining steady gait. Checked pantry supplies and confirmed hydration. Client reported no discomfort.';
+      }
+      return 'Arrived at 9:00 AM. Assisted client with scheduled CFC homemaking and personal care tasks, including bed linen change and bathroom sanitization. Supervised client during 20-minute indoor mobility routine using prescribed cane. Client expressed satisfaction with care.';
     }
-    return true;
-  });
 
-  // Sort: Urgent notes always top
-  const sortedQueue = [...filteredQueue].sort((a, b) => {
-    if (a.isUrgentSafety && !b.isUrgentSafety) return -1;
-    if (!a.isUrgentSafety && b.isUrgentSafety) return 1;
-    return a.id.localeCompare(b.id);
-  });
+    if (activeNote.clientId === 'C-1002') {
+      // Eli Brandt (HCBS / IHSS) with amber blanks
+      const meal = amberBlanks['[add meal items]'] || questionsAnswerState['q1'] || '[add meal items]';
+      const duration = amberBlanks['[add duration]'] || questionsAnswerState['q2'] || '[add duration]';
+      const medName = amberBlanks['[add medication name]'] || questionsAnswerState['q3'] || '[add medication name]';
+      const exactTime = amberBlanks['[add exact time]'] || '1:15 PM';
 
-  // Note Action Handlers
-  const handleApproveNote = (id: string) => {
-    setNotes((prev) =>
-      prev.map((n) =>
-        n.id === id
-          ? {
-            ...n,
-            status: 'Approved',
-            timeline: [
-              ...n.timeline,
-              { title: 'Approved by reviewer', actor: 'Maya R.', time: 'Just now' },
-            ],
-          }
-          : n
-      )
-    );
-    showToast(`Note for ${deIdentify(currentNote.clientName)} approved`);
-    addFeed(`Care note approved for ${currentNote.clientId}`, true);
+      if (refineFormat === 'soap') {
+        return `S: Client engaged positively and participated in meal selection.\nO: Assisted with lunch (${meal}). Supervised community walk for ${duration} per integration goal. Prompted ${medName} at ${exactTime}.\nA: Good community tolerance and independent life skill participation.\nP: Continue daily community walk and scheduled medication prompting.`;
+      }
+      if (refineFormat === 'bullets') {
+        return `• Tasks performed: Lunch preparation, community walk, medication prompting.\n• Meal & Nutrition: Provided ${meal}.\n• Community integration: Supervised walk for ${duration}.\n• Medication: Prompted ${medName} at ${exactTime} with water.`;
+      }
+      return `Assisted Eli with lunch (${meal}) per care plan schedule. Supervised community mobility walk for ${duration} in neighborhood per community integration goal. Prompted scheduled medication (${medName}) at ${exactTime} with water; client self-administered without difficulty.`;
+    }
+
+    // Default: Marisol Vega (IHSS)
+    const alternative = amberBlanks['[add alternative offered]'] || (questionsAnswerState['q1'] ? 'yogurt with sliced bananas' : '[add alternative offered]');
+
+    if (refineFormat === 'soap') {
+      return `S: Client stated lack of appetite for oatmeal at 8:40 AM.\nO: Vital tasks completed: morning hygiene, safe transfers with rolling walker, meal preparation. Client accepted ${alternative} at 8:55 AM. Med reminder at 9:05 AM.\nA: Nutrition achieved with verbal encouragement; no physical prompting required.\nP: Continue offering alternative breakfast choices and remind morning medications at scheduled 9:00 AM window.`;
+    }
+    if (refineFormat === 'bullets') {
+      return `• Tasks performed: Meal preparation, morning hygiene, transfer assistance with rolling walker, medication reminder.\n• Client response: Declined oatmeal at 8:40 AM; accepted ${alternative} at 8:55 AM upon verbal re-offering.\n• Observations: Ambulating safely with walker. Alert and oriented.\n• Follow-up: Report breakfast food preferences to case manager.`;
+    }
+    if (refineFormat === 'state') {
+      return `COLORADO IHSS VISIT DOCUMENTATION\nClient: Marisol Vega | Date: Nov 17, 2026 | Time: 8:00 AM – 11:30 AM\n1. Attendant Care: Assisted with personal hygiene and rolling walker transfers.\n2. Nutrition: Client declined initial breakfast item at 8:40 AM; accepted ${alternative} at 8:55 AM.\n3. Medication Reminder: Prompted client for morning blood pressure medication at 9:05 AM per care plan.\n4. Client Status: Calm, ambulating safely.`;
+    }
+    if (refineLength === 'short') {
+      return `Client declined breakfast at 8:40 AM. Caregiver offered ${alternative} after 15 minutes; client accepted. Morning blood pressure medication was reminded per care plan at 9:05 AM.`;
+    }
+    if (refineLength === 'detailed') {
+      return `Client was awake and sitting in armchair at 8:02 AM. Caregiver prepared breakfast of oatmeal; client verbally declined at 8:40 AM. Caregiver implemented verbal encouragement techniques without physical prompting, re-offering alternative light options at 8:55 AM. Client accepted ${alternative}. Morning hypertension medication reminder provided at 9:05 AM; client self-administered with water. Assisted with oral hygiene and transfers to living room with rolling walker.`;
+    }
+
+    return `At 8:40 AM, client declined offered oatmeal. Caregiver waited 15 minutes and verbally encouraged client, offering ${alternative}, which client accepted. Assisted client with morning hygiene and transfer using rolling walker. At 9:05 AM, caregiver reminded client to take scheduled blood pressure medication per physician orders with water.`;
+  }, [
+    isSafetyRiskDetected,
+    refineLanguage,
+    activeNote.clientId,
+    refineFormat,
+    refineLength,
+    amberBlanks,
+    questionsAnswerState,
+  ]);
+
+  // Sync editable refined text whenever generated note changes
+  useEffect(() => {
+    setEditableRefinedText(generatedRefinedNote);
+  }, [generatedRefinedNote]);
+
+  // Handle "Refine Note" Action
+  const handleTriggerRefine = () => {
+    setIsRefining(true);
+    setRefineProgressText('Checking state Medicaid rules… formatting note…');
+    setTimeout(() => {
+      setIsRefining(false);
+      showToast('Note refined per Colorado Medicaid objective care standards.');
+      // Add version history entry
+      setNotes((prev) =>
+        prev.map((n) =>
+          n.id === activeNote.id
+            ? {
+                ...n,
+                timeline: [
+                  {
+                    title: `AI Note Coach refined (${refineFormat}, ${refineLength})`,
+                    actor: 'AI Care Note Coach',
+                    time: 'Just now',
+                    note: `Applied ${refineProgram} rules with zero invent-fact policy.`,
+                  },
+                  ...n.timeline,
+                ],
+              }
+            : n
+        )
+      );
+    }, 900);
   };
 
-  const handleSendToCaregiver = (id: string) => {
-    setNotes((prev) =>
-      prev.map((n) =>
-        n.id === id
-          ? {
-            ...n,
-            status: 'Waiting on caregiver',
-            timeline: [
-              ...n.timeline,
-              { title: 'Questions sent to caregiver', actor: 'Maya R.', time: 'Just now' },
-            ],
-          }
-          : n
-      )
-    );
-    showToast(`Questions sent to ${deIdentify(currentNote.caregiverName)}`);
-    addFeed(`Clarification questions sent for visit ${currentNote.visitDate}`, false);
-  };
-
-  const handleEscalateNote = (id: string) => {
-    setNotes((prev) =>
-      prev.map((n) =>
-        n.id === id
-          ? {
-            ...n,
-            status: 'Urgent',
-            isUrgentSafety: true,
-            timeline: [
-              ...n.timeline,
-              { title: 'Escalated to clinical supervisor', actor: 'Maya R.', time: 'Just now' },
-            ],
-          }
-          : n
-      )
-    );
-    setShowIncidentModal(true);
-    showToast(`Note escalated to RN supervisor`);
+  // Replace a problem phrase directly
+  const handleUseSuggestedWording = (flag: FlagItem) => {
+    if (!flag.suggestedReplacement) return;
+    setCurrentCaregiverText((prev) => prev.replace(flag.phrase, flag.suggestedReplacement!));
+    setActiveHighlightPopover(null);
+    showToast(`Replaced "${flag.phrase}" with compliant phrasing.`);
   };
 
   // Assistant Question/Command Runner
@@ -621,44 +769,25 @@ export const AuditPage: React.FC = () => {
     setAssistantInput('');
 
     setTimeout(() => {
-      if (userPrompt.toLowerCase().includes('why') || userPrompt.toLowerCase().includes('flagged')) {
+      const q = userPrompt.toLowerCase();
+      if (q.includes('why') || q.includes('flag') || q.includes('rule')) {
         setAssistantMessages((prev) => [
           ...prev,
           {
             sender: 'assistant',
-            text: `Under Colorado rule 10 CCR 2505-10 § 8.510, notes cannot include subjective words like "difficult". State auditors reject notes that express caregiver frustration rather than observable care. Also, "made her eat" suggests non-consensual care and must be investigated.`,
+            text: `Under Colorado rule 10 CCR 2505-10 § 8.510, notes cannot include subjective words like "difficult" or "acting up". State auditors require observable descriptions. In addition, physical force language must be reviewed by a clinical supervisor.`,
             source: 'Rule R-01 & R-02 (Colorado Medicaid)',
-            actionButton: { label: 'Open incident report', actionId: 'incident' },
+            actionButton: { label: '✨ Refine note now', actionId: 'refine' },
           },
         ]);
-      } else if (userPrompt.toLowerCase().includes('summarize')) {
+      } else if (q.includes('incident') || q.includes('safety') || q.includes('fall')) {
         setAssistantMessages((prev) => [
           ...prev,
           {
             sender: 'assistant',
-            text: `Marisol V. completed 5 visits (20.5 hours) this week, 100% EVV verified. She declined breakfast twice, which resolved when offered yogurt. All morning BP medications were observed. No falls or pain reported.`,
-            source: 'Visits Nov 12 - Nov 17',
-            actionButton: { label: 'Send summary to Case Manager', actionId: 'cm_summary' },
-          },
-        ]);
-      } else if (userPrompt.toLowerCase().includes('similar')) {
-        setAssistantMessages((prev) => [
-          ...prev,
-          {
-            sender: 'assistant',
-            text: `Found 2 previous notes from Rosa V. with similar wording: on Nov 12 ("difficult taking bath") and Oct 28 ("refused morning meal"). Both were resolved without incident after caregiver coaching.`,
-            source: 'Caseload Note Archive',
-            actionButton: { label: 'Schedule 10-min coaching', actionId: 'schedule_coaching' },
-          },
-        ]);
-      } else if (userPrompt.toLowerCase().includes('draft') || userPrompt.toLowerCase().includes('message')) {
-        setAssistantMessages((prev) => [
-          ...prev,
-          {
-            sender: 'assistant',
-            text: `"Hi Rosa, thank you for caring for Marisol today! To keep your note compliant with state Medicaid auditors, could you clarify what breakfast food she preferred and whether the nurse was notified about her pill timing? Thank you!"`,
-            source: 'LiliSare Caregiver Coaching Tone',
-            actionButton: { label: 'Send this message to Rosa', actionId: 'send_coaching' },
+            text: `Potential reportable incident identified. Per state guidelines, critical incidents including physical intervention or client injury require a 24-hour notification to HCPF.`,
+            source: 'State Medicaid Critical Incident § 8.500',
+            actionButton: { label: '🚨 Open incident report', actionId: 'incident' },
           },
         ]);
       } else {
@@ -666,93 +795,99 @@ export const AuditPage: React.FC = () => {
           ...prev,
           {
             sender: 'assistant',
-            text: `I've analyzed your request regarding ${deIdentify(currentNote.clientName)}'s visit. No ungrounded clinical facts were found. What would you like to do next?`,
+            text: `Scoped to ${activeNote.clientName} (Visit ${activeNote.visitDate}). The care plan authorizes ${activeNote.clientContext.authorizedHours}. Note has ${activeNote.flags.length} flagged compliance items.`,
+            source: 'Verified Caseload Database',
+            actionButton: { label: '📤 Send to caregiver for approval', actionId: 'send_cg' },
           },
         ]);
       }
-    }, 400);
+    }, 700);
   };
 
   const handleAssistantAction = (actionId: string) => {
-    if (actionId === 'incident') {
+    if (actionId === 'refine') {
       setPendingConfirmAction({
-        label: 'Create State Incident Report',
-        description: `This will file an official incident intake for ${deIdentify(currentNote.clientName)} and alert Supervising RN Dana Whitfield.`,
+        label: 'Run AI Note Refinement',
+        description: 'Refine caregiver note into compliant documentation using Colorado Medicaid standards.',
+        onConfirm: () => {
+          handleTriggerRefine();
+          setPendingConfirmAction(null);
+        },
+      });
+    } else if (actionId === 'incident') {
+      setPendingConfirmAction({
+        label: 'Open Critical Incident Report',
+        description: `Create mandatory 24-hour HCPF incident case for ${activeNote.clientName}.`,
         onConfirm: () => {
           setShowIncidentModal(true);
-          showToast('Incident report workflow initiated');
+          setPendingConfirmAction(null);
         },
       });
-    } else if (actionId === 'send_coaching' || actionId === 'cm_summary') {
+    } else if (actionId === 'send_cg') {
       setPendingConfirmAction({
-        label: 'Send message to caregiver',
-        description: `You are about to dispatch this clarifying message to ${deIdentify(currentNote.caregiverName)} via the mobile app.`,
+        label: 'Send Refined Draft to Caregiver',
+        description: `Dispatch SMS/App push to ${activeNote.caregiverName} requesting digital confirmation.`,
         onConfirm: () => {
-          handleSendToCaregiver(currentNote.id);
-        },
-      });
-    } else if (actionId === 'schedule_coaching') {
-      setPendingConfirmAction({
-        label: 'Assign LearnWorlds Coaching Course',
-        description: `Assign Course LS-204 (Objective Documentation) to ${deIdentify(currentNote.caregiverName)}.`,
-        onConfirm: () => {
-          showToast(`Course assigned to ${deIdentify(currentNote.caregiverName)}`);
+          showToast(`Refined draft sent to ${activeNote.caregiverName} for mobile confirmation.`);
+          setPendingConfirmAction(null);
         },
       });
     }
   };
 
+  // Filtered clients for Column 1
+  const filteredClients = useMemo(() => {
+    return notes.filter((n) => {
+      if (caseloadOnly && !n.inCaseload) return false;
+      if (notesAttentionFilter !== 'All' && n.status !== notesAttentionFilter) return false;
+      if (clientSearch.trim()) {
+        const q = clientSearch.toLowerCase();
+        return n.clientName.toLowerCase().includes(q) || n.caregiverName.toLowerCase().includes(q) || n.program.toLowerCase().includes(q);
+      }
+      return true;
+    });
+  }, [notes, caseloadOnly, notesAttentionFilter, clientSearch]);
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      
       {/* ========================================================================= */}
       {/* 1. TOP HEADER & TAB BAR */}
       {/* ========================================================================= */}
-      <div className="space-y-3">
+      <div className="space-y-2">
         {/* Breadcrumb Trail */}
         <nav aria-label="Breadcrumb" className="text-[12px] font-normal text-[var(--text-muted)] flex items-center gap-1.5">
-          <span className="hover:text-[var(--text)] cursor-pointer" onClick={() => setActiveTab('review')}>
+          <span className="hover:text-[var(--text)] cursor-pointer" onClick={() => setActiveTab('coach')}>
             Care Notes
           </span>
           <span>›</span>
           <span className="font-semibold text-[var(--text)] capitalize">
-            {activeTab === 'review'
-              ? 'Review'
-              : activeTab === 'new-note'
-                ? 'New Note'
-                : activeTab === 'quality'
-                  ? 'Quality Reports'
-                  : 'Rules'}
+            {activeTab === 'coach' ? 'Note Coach' : activeTab === 'new-note' ? 'New Note' : activeTab === 'quality' ? 'Quality Reports' : 'Rules'}
           </span>
-          {activeTab === 'review' && currentNote && (
+          {activeTab === 'coach' && activeNote && (
             <>
               <span>›</span>
-              <span className="text-[var(--text)] truncate max-w-[200px]">
-                {deIdentify(currentNote.caregiverName)} ({deIdentify(currentNote.clientName)})
+              <span className="text-[var(--text)] font-semibold truncate max-w-[200px]">
+                {deIdentify(activeNote.clientName)}
               </span>
             </>
           )}
         </nav>
 
-        {/* Title & Help Link */}
-        <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-[var(--border)] pb-3">
+        {/* Title, Subtitle & 4 Tabs */}
+        <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-3 border-b border-[var(--border)] pb-3">
           <div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5">
               <h1 className="text-[28px] font-bold text-[var(--text)] leading-tight">Care Notes</h1>
-              <button
-                type="button"
-                onClick={() => setShowHelpGuide(true)}
-                className="text-[12px] font-semibold text-[var(--green-700)] bg-[var(--green-100)] px-2.5 py-1 rounded-[8px] border border-[var(--border)] hover:bg-[var(--green-700)] hover:text-white transition flex items-center gap-1"
-                title="Open 3-step guide for this screen"
-              >
-                <span>?</span>
-                <span>Help guide</span>
-              </button>
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[var(--green-100)] text-[var(--green-900)] border border-[#CDE0C6]">
+                AI Workbench
+              </span>
             </div>
-            <p className="text-[14px] font-normal text-[var(--text-muted)] mt-1">
-              {activeTab === 'review' && 'Notes waiting for your check'}
-              {activeTab === 'new-note' && 'Write or dictate a note for a client'}
-              {activeTab === 'quality' && 'How well notes are meeting the rules'}
-              {activeTab === 'rules' && 'What the system checks for'}
+            <p className="text-[14px] font-normal text-[var(--text-muted)] mt-0.5">
+              {activeTab === 'coach' && 'AI-assisted care note refinement, Medicaid rule compliance, and caregiver coaching.'}
+              {activeTab === 'new-note' && 'Write or dictate a note for a client.'}
+              {activeTab === 'quality' && 'How well notes are meeting state compliance rules.'}
+              {activeTab === 'rules' && 'What the system checks for across state programs.'}
             </p>
           </div>
 
@@ -760,41 +895,45 @@ export const AuditPage: React.FC = () => {
           <div className="flex items-center bg-[var(--card)] border border-[var(--border)] rounded-[8px] p-0.5 h-[36px] shrink-0">
             <button
               type="button"
-              onClick={() => setActiveTab('review')}
-              className={`h-[30px] px-3.5 rounded-[6px] text-[12px] font-semibold transition ${activeTab === 'review'
+              onClick={() => setActiveTab('coach')}
+              className={`h-[30px] px-3.5 rounded-[6px] text-[12px] font-semibold transition ${
+                activeTab === 'coach'
                   ? 'bg-[var(--green-700)] text-white shadow-xs'
                   : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-                }`}
+              }`}
             >
-              Review
+              Note Coach
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('new-note')}
-              className={`h-[30px] px-3.5 rounded-[6px] text-[12px] font-semibold transition ${activeTab === 'new-note'
+              className={`h-[30px] px-3.5 rounded-[6px] text-[12px] font-semibold transition ${
+                activeTab === 'new-note'
                   ? 'bg-[var(--green-700)] text-white shadow-xs'
                   : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-                }`}
+              }`}
             >
               New Note
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('quality')}
-              className={`h-[30px] px-3.5 rounded-[6px] text-[12px] font-semibold transition ${activeTab === 'quality'
+              className={`h-[30px] px-3.5 rounded-[6px] text-[12px] font-semibold transition ${
+                activeTab === 'quality'
                   ? 'bg-[var(--green-700)] text-white shadow-xs'
                   : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-                }`}
+              }`}
             >
               Quality Reports
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('rules')}
-              className={`h-[30px] px-3.5 rounded-[6px] text-[12px] font-semibold transition ${activeTab === 'rules'
+              className={`h-[30px] px-3.5 rounded-[6px] text-[12px] font-semibold transition ${
+                activeTab === 'rules'
                   ? 'bg-[var(--green-700)] text-white shadow-xs'
                   : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-                }`}
+              }`}
             >
               Rules
             </button>
@@ -803,1322 +942,1225 @@ export const AuditPage: React.FC = () => {
       </div>
 
       {/* ========================================================================= */}
-      {/* 2. TAB 1: REVIEW TAB (2-PANEL LAYOUT) */}
+      {/* 2. TAB 1: AI CARE NOTE COACH WORKBENCH (3-COLUMN LAYOUT) */}
       {/* ========================================================================= */}
-      {activeTab === 'review' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-          {/* LEFT PANEL: THE QUEUE (4 COLS) */}
-          <div className="lg:col-span-4 bg-[var(--card)] border border-[var(--border)] rounded-[12px] shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden flex flex-col h-[780px]">
-            {/* Filter Bar */}
-            <div className="p-3 border-b border-[var(--border)] space-y-2 bg-[var(--card)]">
-              <div className="relative">
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search client or caregiver…"
-                  className="w-full h-[36px] bg-[var(--card)] border border-[var(--border)] rounded-[8px] pl-8 pr-3 text-[12px] font-normal text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--green-700)]"
-                />
-                <span className="absolute left-2.5 top-2.5 text-[12px] text-[var(--text-muted)]">🔍</span>
-              </div>
-
-              {/* 3 Plain Filters */}
-              <div className="grid grid-cols-3 gap-1.5">
-                {/* Status */}
-                <select
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  className="h-[32px] px-2 bg-[var(--bg)] border border-[var(--border)] rounded-[6px] text-[12px] text-[var(--text)] font-normal"
-                >
-                  <option value="All">All Statuses</option>
-                  <option value="Needs fix">Needs fix</option>
-                  <option value="Waiting on caregiver">Waiting on CG</option>
-                  <option value="Urgent">Urgent</option>
-                  <option value="Approved">Approved</option>
-                </select>
-
-                {/* Program */}
-                <select
-                  value={filterProgram}
-                  onChange={(e) => setFilterProgram(e.target.value)}
-                  className="h-[32px] px-2 bg-[var(--bg)] border border-[var(--border)] rounded-[6px] text-[12px] text-[var(--text)] font-normal"
-                >
-                  <option value="All">All Programs</option>
-                  <option value="IHSS">IHSS</option>
-                  <option value="CFC">CFC</option>
-                  <option value="HCBS">HCBS</option>
-                  <option value="IRSS">IRSS</option>
-                  <option value="HMA">HMA</option>
-                </select>
-
-                {/* Priority */}
-                <select
-                  value={filterPriority}
-                  onChange={(e) => setFilterPriority(e.target.value)}
-                  className="h-[32px] px-2 bg-[var(--bg)] border border-[var(--border)] rounded-[6px] text-[12px] text-[var(--text)] font-normal"
-                >
-                  <option value="All">All Priority</option>
-                  <option value="Urgent first">Urgent first</option>
-                  <option value="Normal">Normal</option>
-                </select>
-              </div>
+      {activeTab === 'coach' && (
+        <div className="space-y-3">
+          
+          {/* Top Control Bar with Responsive Stepper & Details Drawer Button */}
+          <div className="flex items-center justify-between gap-3 bg-[var(--card)] border border-[var(--border)] rounded-[10px] p-2.5 shadow-2xs">
+            {/* Mobile / Tablet Step Switcher */}
+            <div className="flex items-center gap-1.5 lg:hidden">
+              <span className="text-[11px] font-semibold text-[var(--text-muted)]">Step:</span>
+              <button
+                type="button"
+                onClick={() => setResponsiveStep(1)}
+                className={`px-2 py-1 rounded text-[11px] font-semibold ${
+                  responsiveStep === 1 ? 'bg-[var(--green-700)] text-white' : 'bg-stone-100 text-stone-700'
+                }`}
+              >
+                1. Client
+              </button>
+              <button
+                type="button"
+                onClick={() => setResponsiveStep(2)}
+                className={`px-2 py-1 rounded text-[11px] font-semibold ${
+                  responsiveStep === 2 ? 'bg-[var(--green-700)] text-white' : 'bg-stone-100 text-stone-700'
+                }`}
+              >
+                2. Note & Visit
+              </button>
+              <button
+                type="button"
+                onClick={() => setResponsiveStep(3)}
+                className={`px-2 py-1 rounded text-[11px] font-semibold ${
+                  responsiveStep === 3 ? 'bg-[var(--green-700)] text-white' : 'bg-stone-100 text-stone-700'
+                }`}
+              >
+                3. Refined
+              </button>
             </div>
 
-            {/* Queue List Items */}
-            <div className="divide-y divide-[var(--border)] overflow-y-auto flex-1">
-              {sortedQueue.length === 0 ? (
-                <div className="p-8 text-center space-y-2">
-                  <div className="text-3xl">✓</div>
-                  <div className="text-[14px] font-semibold text-[var(--text)]">No notes need review. Nice work!</div>
-                  <div className="text-[12px] font-normal text-[var(--text-muted)]">
-                    All submitted care notes in this category have been checked.
-                  </div>
-                </div>
-              ) : (
-                sortedQueue.map((item) => {
-                  const isSelected = item.id === currentNote.id;
+            {/* Desktop Workbench Label */}
+            <div className="hidden lg:flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
+              <span className="w-2 h-2 rounded-full bg-[var(--green-700)]"></span>
+              <span className="font-semibold text-[var(--text)]">AI Note Coach Workbench</span>
+              <span>· Three-column flow from left to right</span>
+            </div>
 
-                  return (
-                    <div
-                      key={item.id}
-                      onClick={() => setSelectedNoteId(item.id)}
-                      className={`p-3.5 cursor-pointer transition ${isSelected
-                          ? 'bg-[var(--green-100)]/70 border-l-4 border-l-[var(--green-700)]'
-                          : 'hover:bg-[#F0F2ED]/60 bg-[var(--card)]'
-                        }`}
-                    >
-                      <div className="flex items-center justify-between gap-1 mb-1">
-                        <span className="text-[14px] font-semibold text-[var(--text)] truncate">
-                          {deIdentify(item.clientName)}
-                        </span>
-                        {/* One Status Chip */}
-                        <span
-                          className={`text-[11px] font-semibold px-2 py-0.5 rounded-[6px] shrink-0 ${item.status === 'Urgent'
-                              ? 'bg-red-100 text-red-900 border border-red-200'
-                              : item.status === 'Needs fix'
-                                ? 'bg-amber-100 text-amber-900 border border-amber-200'
-                                : item.status === 'Waiting on caregiver'
-                                  ? 'bg-blue-100 text-blue-900 border border-blue-200'
-                                  : 'bg-emerald-100 text-emerald-900 border border-emerald-200'
-                            }`}
-                        >
-                          {item.status}
-                        </span>
-                      </div>
-
-                      <div className="text-[12px] font-normal text-[var(--text-muted)] truncate">
-                        Caregiver: <b className="text-[var(--text)]">{deIdentify(item.caregiverName)}</b> · {item.program}
-                      </div>
-
-                      <p className="text-[12px] font-normal text-[var(--text)] line-clamp-1 mt-1">
-                        {item.originalText}
-                      </p>
-
-                      <div className="text-[11px] font-normal text-[var(--text-muted)] mt-1.5 flex items-center justify-between">
-                        <span>{item.visitDate}</span>
-                        {item.attachments.length > 0 && (
-                          <span className="flex items-center gap-1">
-                            <span>📎</span> {item.attachments.length} file
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
+            {/* Right Buttons: Details Drawer & Assistant Launcher */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowDetailsDrawer(true)}
+                className="min-h-[30px] px-3 rounded-[6px] border border-[var(--border)] bg-white text-[12px] font-semibold text-[var(--text)] hover:bg-[#F0F2ED] transition flex items-center gap-1.5 shadow-2xs"
+              >
+                <svg className="w-3.5 h-3.5 text-[var(--green-700)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>Details & Audit</span>
+              </button>
             </div>
           </div>
 
-          {/* RIGHT PANEL: OPEN NOTE (8 COLS) */}
-          <div className="lg:col-span-8 space-y-4">
-            {/* Sticky Client HIPAA Banner */}
-            <div className="sticky top-0 z-20 bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-2">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[16px] font-bold text-[var(--text)]">
-                      {deIdentify(currentNote.clientName)}
-                    </span>
-                    {/* Masked ID with click to reveal */}
-                    <button
-                      type="button"
-                      onClick={() => setRevealId(!revealId)}
-                      className="text-[12px] font-normal text-[var(--text-muted)] bg-[var(--bg)] border border-[var(--border)] px-2 py-0.5 rounded-[6px] hover:text-[var(--text)]"
-                      title="Click to reveal full client ID"
-                    >
-                      ID: {revealId ? currentNote.clientId : '••••' + currentNote.clientId.slice(-3)}
-                    </button>
-                    {/* Age with click to reveal DOB */}
-                    <button
-                      type="button"
-                      onClick={() => setRevealDob(!revealDob)}
-                      className="text-[12px] font-normal text-[var(--text-muted)] bg-[var(--bg)] border border-[var(--border)] px-2 py-0.5 rounded-[6px] hover:text-[var(--text)]"
-                      title="Click to reveal date of birth"
-                    >
-                      {revealDob ? `DOB: ${currentNote.clientDob}` : `Age ${currentNote.clientAge}`}
-                    </button>
-                    <span className="text-[12px] font-semibold px-2 py-0.5 rounded-[6px] bg-[var(--green-100)] text-[var(--green-700)]">
-                      {currentNote.program}
-                    </span>
-                  </div>
-
-                  <div className="text-[12px] font-normal text-[var(--text-muted)] mt-1 flex items-center gap-2 flex-wrap">
-                    <span>Caregiver: <b className="text-[var(--text)]">{deIdentify(currentNote.caregiverName)}</b></span>
-                    <span>·</span>
-                    <span>{currentNote.visitDate} ({currentNote.visitTime})</span>
-                    <span>·</span>
-                    <span className={currentNote.evvStatus === 'Verified' ? 'text-emerald-800' : 'text-amber-800'}>
-                      {currentNote.evvStatus === 'Verified' ? '✓ EVV Verified' : '⚠️ EVV Exception'}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0">
-                  {/* Access Logged Indicator */}
-                  <span
-                    className="text-[11px] font-normal text-[var(--text-muted)] flex items-center gap-1 bg-[var(--bg)] border border-[var(--border)] px-2 py-1 rounded-[6px]"
-                    title="Viewing this record is recorded in the HIPAA compliance audit log."
-                  >
-                    <span>🔒</span>
-                    <span className="hidden sm:inline">Access logged</span>
-                  </span>
-
-                  {/* Details Drawer Button */}
+          {/* 3 COLUMNS CONTAINER */}
+          <div className="flex flex-col lg:flex-row gap-4 items-start">
+            
+            {/* ------------------------------------------------------------------- */}
+            {/* COLUMN 1: "1. Choose client" (narrow, 280px)                        */}
+            {/* ------------------------------------------------------------------- */}
+            <div className={`w-full lg:w-[280px] shrink-0 bg-[var(--card)] border border-[var(--border)] rounded-[12px] shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden flex flex-col ${
+              responsiveStep !== 1 ? 'hidden lg:flex' : 'flex'
+            }`}>
+              {/* Header */}
+              <div className="p-3.5 border-b border-[var(--border)] space-y-2 bg-[var(--card)]">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-[14px] font-bold text-[var(--text)]">1. Choose client</h3>
                   <button
                     type="button"
-                    onClick={() => setShowDetailsDrawer(true)}
-                    className="min-h-[32px] px-3 rounded-[6px] border border-[var(--border)] bg-[var(--card)] text-[12px] font-semibold text-[var(--text)] hover:bg-[#F0F2ED] transition flex items-center gap-1"
+                    onClick={() => setCaseloadOnly(!caseloadOnly)}
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition ${
+                      caseloadOnly ? 'bg-[var(--green-100)] text-[var(--green-900)] border-[#CDE0C6]' : 'bg-stone-100 text-stone-600 border-stone-200'
+                    }`}
                   >
-                    <span>📋</span>
-                    <span>Details</span>
+                    {caseloadOnly ? 'My Caseload' : 'All Clients'}
                   </button>
+                </div>
+
+                {/* Search Box */}
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={clientSearch}
+                    onChange={(e) => setClientSearch(e.target.value)}
+                    placeholder="Search client, caregiver..."
+                    className="w-full h-[32px] bg-[#F7F7F4] border border-[var(--border)] rounded-[6px] pl-7 pr-2.5 text-[12px] text-[var(--text)] focus:outline-none focus:ring-1 focus:ring-[var(--green-700)]"
+                  />
+                  <span className="absolute left-2 top-2 text-[11px] text-[var(--text-muted)]">🔍</span>
                 </div>
               </div>
 
-              {/* Caseload & Session notice */}
-              {!currentNote.inCaseload && (
-                <div className="p-2 bg-amber-50 border border-amber-200 rounded-[6px] text-[11px] text-amber-900 flex items-center justify-between">
-                  <span>Notice: This client is outside your assigned caseload. Access has been recorded in the supervisor log.</span>
-                  <button
-                    type="button"
-                    onClick={() => setShowSessionTimeoutModal(true)}
-                    className="underline text-[11px] ml-2"
-                  >
-                    Simulate Auto-Lock
-                  </button>
+              {/* Client List */}
+              <div className="divide-y divide-[var(--border)] overflow-y-auto max-h-[500px] flex-1">
+                {filteredClients.map((item) => {
+                  const isSelected = activeNote.id === item.id;
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => {
+                        setSelectedNoteId(item.id);
+                        setResponsiveStep(2);
+                      }}
+                      title={`Masked ID: ${item.clientId}`}
+                      className={`p-3 cursor-pointer transition flex flex-col gap-1 ${
+                        isSelected
+                          ? 'bg-[var(--green-100)] border-l-4 border-l-[var(--green-700)]'
+                          : 'hover:bg-[#F9FAF8]'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-[13px] font-bold text-[var(--text)] truncate">
+                          {deIdentify(item.clientName)}
+                        </span>
+                        <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-white/70 border border-stone-200 text-stone-700">
+                          {item.program}
+                        </span>
+                      </div>
+
+                      <div className="text-[11px] text-[var(--text-muted)] flex items-center justify-between">
+                        <span>CG: {deIdentify(item.caregiverName)}</span>
+                        <span className="text-[10px] font-mono text-stone-400">
+                          {item.clientId}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1">
+                        <span
+                          className={`text-[10px] font-semibold px-2 py-0.2 rounded-full ${
+                            item.status === 'Urgent'
+                              ? 'bg-rose-50 text-rose-800 border border-rose-200'
+                              : item.status === 'Needs fix'
+                              ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                              : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                          }`}
+                        >
+                          {item.status === 'Urgent' ? '1 urgent issue' : item.status === 'Needs fix' ? `${item.flags.length} needs fix` : 'Approved'}
+                        </span>
+                        <span className="text-[10px] text-[var(--text-muted)]">{item.visitDate}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Bottom Shortcut: Notes Needing Attention Filter */}
+              <div className="p-3 border-t border-[var(--border)] bg-[#F7F7F4] space-y-1.5">
+                <div className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+                  Notes needing attention:
                 </div>
-              )}
+                <div className="flex flex-wrap gap-1">
+                  {(['All', 'Needs fix', 'Urgent', 'Waiting on caregiver', 'Approved'] as const).map((st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => setNotesAttentionFilter(st)}
+                      className={`px-2 py-0.5 rounded text-[10px] font-semibold transition ${
+                        notesAttentionFilter === st
+                          ? 'bg-[var(--green-700)] text-white'
+                          : 'bg-white border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]'
+                      }`}
+                    >
+                      {st}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
-            {/* Safety Alert Banner (Only when urgent safety issue) */}
-            {currentNote.isUrgentSafety && (
-              <div className="bg-red-50 border-2 border-[var(--red)] rounded-[12px] p-5 text-[var(--red)] space-y-3 animate-fadeIn">
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl">⚠️</span>
+            {/* ------------------------------------------------------------------- */}
+            {/* COLUMN 2: "2. Choose visit and add the note" (main area, flex-1)    */}
+            {/* ------------------------------------------------------------------- */}
+            <div className={`flex-1 min-w-0 bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-4 ${
+              responsiveStep !== 2 ? 'hidden lg:block' : 'block'
+            }`}>
+              
+              {/* Column 2 Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+                <div>
+                  <h3 className="text-[15px] font-bold text-[var(--text)]">2. Choose visit and add the note</h3>
+                  <p className="text-[12px] text-[var(--text-muted)] mt-0.5">Select visit record, verify caregiver submission, and flag compliance phrasing</p>
+                </div>
+                <span className="text-[11px] font-semibold text-[var(--text-muted)] flex items-center gap-1">
+                  <span>🔒 Access logged</span>
+                </span>
+              </div>
+
+              {/* Client Info Banner */}
+              <div className="p-3 bg-[#F7F7F4] border border-[var(--border)] rounded-[10px] flex flex-wrap items-center justify-between gap-3 text-[12px]">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-[var(--green-700)] text-white font-bold flex items-center justify-center text-xs">
+                    {activeNote.clientName.slice(0, 2).toUpperCase()}
+                  </div>
                   <div>
-                    <h2 className="text-[16px] font-bold">Needs Supervisor Review · Safety Issue Detected</h2>
-                    <span className="text-[12px] text-red-950">
-                      The note contains phrasing indicating potential physical force or non-consensual care.
-                    </span>
+                    <div className="font-bold text-[14px] text-[var(--text)]">
+                      {deIdentify(activeNote.clientName)}
+                    </div>
+                    <div className="text-[11px] text-[var(--text-muted)]">
+                      ID: {activeNote.clientId} · Age {activeNote.clientAge} ({activeNote.clientDob})
+                    </div>
                   </div>
                 </div>
-                <p className="text-[12px] text-red-950 leading-relaxed">
-                  State rules require human review. LiliSare will not suggest rewording that might conceal a reportable event.
-                  Please take one of the safety actions below:
-                </p>
-                <div className="flex items-center gap-2 pt-1 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => setShowIncidentModal(true)}
-                    className="min-h-[36px] px-4 rounded-[8px] bg-[var(--red)] text-white text-[12px] font-semibold hover:brightness-95 transition"
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white border border-[var(--border)] text-[var(--text)]">
+                    {activeNote.program} Program
+                  </span>
+                  <span className="text-[11px] text-[var(--text-muted)]">
+                    Caregiver: <strong>{deIdentify(activeNote.caregiverName)}</strong>
+                  </span>
+                </div>
+              </div>
+
+              {/* Visit Selector (Horizontal Recent Visits List) */}
+              <div className="space-y-1.5">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                  Select Visit Record:
+                </div>
+                <div className="grid sm:grid-cols-3 gap-2">
+                  <div className="p-2.5 rounded-[8px] border-2 border-[var(--green-700)] bg-[var(--green-100)] text-[12px] cursor-pointer">
+                    <div className="font-bold text-[var(--green-900)]">{activeNote.visitDate}</div>
+                    <div className="text-[11px] text-[var(--green-900)]">{activeNote.visitTime}</div>
+                    <div className="text-[10px] text-emerald-800 mt-1 flex items-center gap-1">
+                      <span>✓ {activeNote.evvStatus}</span>
+                      <span>· {activeNote.tasks.length} tasks</span>
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => showToast('Switched to previous visit (Nov 15). Note is already approved.')}
+                    className="p-2.5 rounded-[8px] border border-[var(--border)] bg-[#F7F7F4] text-[12px] cursor-pointer hover:bg-stone-100 transition"
                   >
-                    Create Incident Report (State Portal)
-                  </button>
+                    <div className="font-semibold text-[var(--text)]">Nov 15, 2026</div>
+                    <div className="text-[11px] text-[var(--text-muted)]">8:00 AM – 11:30 AM</div>
+                    <div className="text-[10px] text-stone-500 mt-1">✓ Verified · Approved</div>
+                  </div>
+
+                  <div
+                    onClick={() => showToast('Switched to visit (Nov 14).')}
+                    className="p-2.5 rounded-[8px] border border-[var(--border)] bg-[#F7F7F4] text-[12px] cursor-pointer hover:bg-stone-100 transition"
+                  >
+                    <div className="font-semibold text-[var(--text)]">Nov 14, 2026</div>
+                    <div className="text-[11px] text-[var(--text-muted)]">8:00 AM – 11:00 AM</div>
+                    <div className="text-[10px] text-stone-500 mt-1">✓ Verified · Approved</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Note Input Area with 3 Tabs */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1 bg-[#F7F7F4] p-0.5 rounded-[8px] border border-[var(--border)]">
+                    <button
+                      type="button"
+                      onClick={() => setNoteInputTab('caregiver')}
+                      className={`px-3 py-1 rounded-[6px] text-[12px] font-semibold transition ${
+                        noteInputTab === 'caregiver'
+                          ? 'bg-white text-[var(--text)] shadow-2xs'
+                          : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+                      }`}
+                    >
+                      Caregiver&apos;s note
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNoteInputTab('paste')}
+                      className={`px-3 py-1 rounded-[6px] text-[12px] font-semibold transition ${
+                        noteInputTab === 'paste'
+                          ? 'bg-white text-[var(--text)] shadow-2xs'
+                          : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+                      }`}
+                    >
+                      Paste or type
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNoteInputTab('upload')}
+                      className={`px-3 py-1 rounded-[6px] text-[12px] font-semibold transition ${
+                        noteInputTab === 'upload'
+                          ? 'bg-white text-[var(--text)] shadow-2xs'
+                          : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+                      }`}
+                    >
+                      Upload
+                    </button>
+                  </div>
+
+                  {/* Dictation Mic Button */}
                   <button
                     type="button"
                     onClick={() => {
-                      showToast('Notification sent to Supervising RN Dana Whitfield');
+                      setIsDictating(!isDictating);
+                      if (!isDictating) {
+                        showToast('Voice dictation active. Speak clearly into microphone.');
+                        setCurrentCaregiverText((prev) => prev + ' Client was oriented and accepted water at 10:00 AM.');
+                      } else {
+                        showToast('Voice dictation ended.');
+                      }
                     }}
-                    className="min-h-[36px] px-4 rounded-[8px] border border-[var(--red)] bg-white text-[var(--red)] text-[12px] font-semibold hover:bg-red-50 transition"
+                    className={`min-h-[28px] px-2.5 rounded-[6px] text-[11px] font-semibold flex items-center gap-1.5 transition ${
+                      isDictating
+                        ? 'bg-rose-500 text-white animate-pulse'
+                        : 'bg-white border border-[var(--border)] text-[var(--text)] hover:bg-[#F0F2ED]'
+                    }`}
                   >
-                    Notify Supervisor
+                    <span>🎙️</span>
+                    <span>{isDictating ? 'Recording…' : 'Dictate'}</span>
                   </button>
                 </div>
-              </div>
-            )}
 
-            {/* STEP 1: READ */}
-            <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-2">
-              <div className="border-b border-[var(--border)] pb-2">
-                <h3 className="text-[16px] font-semibold text-[var(--text)]">Step 1: Read the original note</h3>
-                <p className="text-[12px] font-normal text-[var(--text-muted)]">
-                  This is what the caregiver originally wrote after their visit. Tap any highlighted phrase to see why it was flagged.
-                </p>
-              </div>
+                {/* Tab 1: Caregiver's Note with Live Highlights */}
+                {noteInputTab === 'caregiver' && (
+                  <div className="space-y-2">
+                    {/* Live Flagging Count Bar */}
+                    <div className="p-2 bg-[#F7F7F4] border border-[var(--border)] rounded-[8px] flex items-center justify-between text-[11px]">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-[var(--text)]">
+                          {activeNote.flags.length} issues identified:
+                        </span>
+                        <span className="flex items-center gap-1 text-amber-800 font-medium">
+                          <span className="w-2 h-2 rounded-full bg-amber-500" />
+                          <span>{activeNote.flags.filter((f) => f.category === 'wording').length} wording</span>
+                        </span>
+                        <span className="flex items-center gap-1 text-blue-800 font-medium">
+                          <span className="w-2 h-2 rounded-full bg-blue-500" />
+                          <span>{activeNote.flags.filter((f) => f.category === 'missing').length} missing detail</span>
+                        </span>
+                        {activeNote.flags.some((f) => f.category === 'safety') && (
+                          <span className="flex items-center gap-1 text-rose-800 font-bold">
+                            <span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse" />
+                            <span>1 safety escalation</span>
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-[var(--text-muted)]">Click highlighted phrase to inspect</span>
+                    </div>
 
-              {/* Note Text with Highlights */}
-              <div className="p-3.5 bg-[var(--bg)] border border-[var(--border)] rounded-[8px] text-[14px] font-normal leading-relaxed text-[var(--text)]">
-                {currentNote.flags.length === 0 ? (
-                  <span>{currentNote.originalText}</span>
-                ) : (
-                  <div>
-                    {currentNote.originalText.split(/(difficult|made her eat anyway|refused to eat|Gave meds|normal stuff all shift|fine and had no problems|acting up)/gi).map((chunk, i) => {
-                      const matched = currentNote.flags.find((f) => f.phrase.toLowerCase() === chunk.toLowerCase());
-                      if (matched) {
-                        return (
-                          <mark
-                            key={i}
-                            onClick={() => setActiveFlagPopover(matched)}
-                            className={`cursor-pointer px-1 py-0.5 rounded font-medium ${matched.isUrgentSafety
-                                ? 'bg-red-200 text-red-950 ring-1 ring-red-400'
-                                : 'bg-amber-200 text-amber-950'
-                              }`}
-                            title="Click to view plain-language explanation"
+                    {/* Textarea with Highlight Preview */}
+                    <div className="relative">
+                      <textarea
+                        rows={4}
+                        value={currentCaregiverText}
+                        onChange={(e) => setCurrentCaregiverText(e.target.value)}
+                        className="w-full p-3 text-[13px] font-mono bg-white border border-[var(--border)] rounded-[8px] text-[var(--text)] leading-relaxed focus:outline-none focus:ring-1 focus:ring-[var(--green-700)]"
+                      />
+                    </div>
+
+                    {/* Interactive Highlights Bar */}
+                    <div className="p-2.5 bg-white border border-[var(--border)] rounded-[8px] space-y-1.5">
+                      <div className="text-[11px] font-semibold text-[var(--text-muted)] uppercase">
+                        Flagged phrases (tap to review & replace):
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {activeNote.flags.map((flag, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => setActiveHighlightPopover(flag)}
+                            className={`px-2 py-1 rounded-[6px] text-[11px] font-semibold border flex items-center gap-1 cursor-pointer transition ${
+                              flag.category === 'safety'
+                                ? 'bg-rose-100 text-rose-900 border-rose-300 hover:bg-rose-200'
+                                : flag.category === 'wording'
+                                ? 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200'
+                                : 'bg-blue-100 text-blue-900 border-blue-300 hover:bg-blue-200'
+                            }`}
                           >
-                            {chunk}
-                          </mark>
-                        );
-                      }
-                      return <span key={i}>{chunk}</span>;
-                    })}
+                            <span>&ldquo;{flag.phrase}&rdquo;</span>
+                            <span className="text-[9px] uppercase font-bold px-1 rounded bg-black/10">
+                              {flag.category}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 )}
-              </div>
 
-              {/* Flag Popover */}
-              {activeFlagPopover && (
-                <div className="p-3 bg-[var(--card)] border-2 border-[var(--amber)] rounded-[8px] space-y-2 text-[12px] animate-fadeIn">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-[var(--text)]">Flagged phrase: "{activeFlagPopover.phrase}"</span>
-                    <button
-                      type="button"
-                      onClick={() => setActiveFlagPopover(null)}
-                      className="text-[var(--text-muted)] hover:text-[var(--text)]"
+                {/* Tab 2: Paste or Type */}
+                {noteInputTab === 'paste' && (
+                  <div className="space-y-2">
+                    <textarea
+                      rows={5}
+                      value={pastedText}
+                      onChange={(e) => setPastedText(e.target.value)}
+                      placeholder="Paste unstructured notes, shift voice memos, or handwritten visit documentation here..."
+                      className="w-full p-3 text-[13px] bg-white border border-[var(--border)] rounded-[8px] text-[var(--text)] focus:outline-none focus:ring-1 focus:ring-[var(--green-700)]"
+                    />
+                    <div className="text-[11px] text-[var(--text-muted)] flex justify-between">
+                      <span>Zero patient data is sent to public AI models. Protected under LiliSphere BAA.</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (pastedText.trim()) {
+                            setCurrentCaregiverText(pastedText);
+                            setNoteInputTab('caregiver');
+                            showToast('Pasted note loaded into review workbench.');
+                          }
+                        }}
+                        className="font-semibold text-[var(--green-700)] hover:underline"
+                      >
+                        Load into workbench →
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Tab 3: Upload Drag & Drop */}
+                {noteInputTab === 'upload' && (
+                  <div className="space-y-2">
+                    <div
+                      onClick={() => {
+                        setUploadedFile({
+                          name: 'Rosa_Vega_Morning_Shift_Audio.m4a',
+                          size: '1.4 MB',
+                          transcript: 'Client was difficult and declined breakfast at 8:40. She took her morning blood pressure pills with water.',
+                        });
+                        setCurrentCaregiverText('Client was difficult and declined breakfast at 8:40. She took her morning blood pressure pills with water.');
+                        showToast('Voice audio file uploaded & transcribed via whisper engine.');
+                      }}
+                      className="p-6 border-2 border-dashed border-[var(--border)] bg-[#F7F7F4] rounded-[8px] text-center cursor-pointer hover:border-[var(--green-700)] transition space-y-1.5"
                     >
-                      ✕ Close
-                    </button>
-                  </div>
-                  <div>
-                    <span className="font-semibold text-amber-950 block">Why this is flagged:</span>
-                    <p className="text-stone-700">{activeFlagPopover.plainWhy}</p>
-                  </div>
-                  <div>
-                    <span className="font-semibold text-emerald-950 block">What to write instead:</span>
-                    <p className="text-stone-700">{activeFlagPopover.plainFix}</p>
-                  </div>
-                </div>
-              )}
-            </div>
+                      <div className="text-2xl">📁</div>
+                      <div className="text-[13px] font-semibold text-[var(--text)]">
+                        Drop voice memo, PDF, photo scan, or text file here
+                      </div>
+                      <div className="text-[11px] text-[var(--text-muted)]">
+                        Supports .m4a, .mp3, .pdf, .jpg, .png (Auto OCR and speech-to-text)
+                      </div>
+                    </div>
 
-            {/* STEP 2: FIX (Only when not urgent safety) */}
-            {!currentNote.isUrgentSafety && (
-              <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-3">
-                <div className="border-b border-[var(--border)] pb-2 flex items-center justify-between">
-                  <div>
-                    <h3 className="text-[16px] font-semibold text-[var(--text)]">Step 2: Check the suggested fix</h3>
-                    <p className="text-[12px] font-normal text-[var(--text-muted)]">
-                      AI organized the text using only facts from the caregiver. Missing details are shown as amber blanks.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Suggested version with amber blanks */}
-                <div className="p-3.5 bg-[var(--bg)] border border-[var(--border)] rounded-[8px] text-[14px] font-normal leading-relaxed text-[var(--text)]">
-                  {currentNote.suggestedText.split(/(\[add [^\]]+\])/gi).map((seg, idx) => {
-                    if (seg.startsWith('[') && seg.endsWith(']')) {
-                      return (
-                        <span
-                          key={idx}
-                          className="bg-[#FEF3C7] text-[#B45309] border border-[#FDE68A] px-1.5 py-0.5 rounded font-medium text-[13px] mx-0.5"
-                          title="Missing detail - ask the caregiver"
-                        >
-                          {seg}
-                        </span>
-                      );
-                    }
-                    return <span key={idx}>{seg}</span>;
-                  })}
-                </div>
-
-                {/* Questions for Caregiver (Collapsible) */}
-                {currentNote.questions.length > 0 && (
-                  <div className="border border-[var(--border)] rounded-[8px] p-3 bg-[var(--card)] space-y-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowQuestions(!showQuestions)}
-                      className="w-full flex items-center justify-between text-[12px] font-semibold text-[var(--text)]"
-                    >
-                      <span>Questions for {deIdentify(currentNote.caregiverName)} ({currentNote.questions.length})</span>
-                      <span>{showQuestions ? '▲ Hide' : '▼ Show'}</span>
-                    </button>
-
-                    {showQuestions && (
-                      <div className="space-y-2 pt-1">
-                        {currentNote.questions.map((q, idx) => (
-                          <div key={q.id} className="p-2.5 bg-[var(--bg)] rounded-[6px] border border-[var(--border)] text-[12px] space-y-1">
-                            <div className="font-semibold text-[var(--text)]">
-                              {idx + 1}. {q.question}
-                            </div>
-                            {q.isAnswered ? (
-                              <div className="text-emerald-900 bg-emerald-50 p-1.5 rounded font-medium">
-                                "{q.answer}" {q.voiceRecorded ? '(Spoken answer)' : ''}
-                              </div>
-                            ) : (
-                              <div className="flex gap-2 pt-1">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const ans = prompt('Caregiver spoken answer:', 'At 11:15 AM through G-tube');
-                                    if (ans) {
-                                      setNotes((prev) =>
-                                        prev.map((n) =>
-                                          n.id === currentNote.id
-                                            ? {
-                                              ...n,
-                                              questions: n.questions.map((item) =>
-                                                item.id === q.id ? { ...item, isAnswered: true, answer: ans } : item
-                                              ),
-                                              suggestedText: n.suggestedText.replace('[add exact time]', ans),
-                                            }
-                                            : n
-                                        )
-                                      );
-                                      showToast('Answer merged into note');
-                                    }
-                                  }}
-                                  className="h-[28px] px-2 rounded bg-white border border-[var(--border)] text-[11px] font-semibold text-[var(--text)] hover:bg-stone-100 flex items-center gap-1"
-                                >
-                                  <span>🎙️</span>
-                                  <span>Record answer</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const ans = prompt('Type answer:');
-                                    if (ans) {
-                                      setNotes((prev) =>
-                                        prev.map((n) =>
-                                          n.id === currentNote.id
-                                            ? {
-                                              ...n,
-                                              questions: n.questions.map((item) =>
-                                                item.id === q.id ? { ...item, isAnswered: true, answer: ans } : item
-                                              ),
-                                            }
-                                            : n
-                                        )
-                                      );
-                                      showToast('Answer saved');
-                                    }
-                                  }}
-                                  className="h-[28px] px-2 rounded bg-white border border-[var(--border)] text-[11px] text-[var(--text)]"
-                                >
-                                  Type answer
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        ))}
+                    {uploadedFile && (
+                      <div className="p-3 bg-white border border-[var(--border)] rounded-[8px] space-y-1.5 text-[12px]">
+                        <div className="flex items-center justify-between font-bold text-[var(--text)]">
+                          <span>Extracted Transcript: {uploadedFile.name}</span>
+                          <span className="text-[10px] text-emerald-700">✓ AI Transcribed</span>
+                        </div>
+                        <p className="p-2 bg-[#F7F7F4] rounded text-[12px] leading-relaxed">
+                          Client was <span className="underline decoration-dotted decoration-amber-500 font-bold">difficult</span> and declined <span className="underline decoration-dotted decoration-blue-500 font-bold">breakfast</span> at 8:40. She took her morning blood pressure pills with water.
+                        </p>
+                        <div className="text-[10px] text-[var(--text-muted)]">
+                          Dotted lines indicate low-confidence transcription items requiring review.
+                        </div>
                       </div>
                     )}
                   </div>
                 )}
               </div>
-            )}
 
-            {/* Attachments Section on Note */}
-            {currentNote.attachments.length > 0 && (
-              <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-2">
-                <span className="text-[12px] font-semibold text-[var(--text)] block">
-                  Attachments on this note ({currentNote.attachments.length})
-                </span>
-                <div className="divide-y divide-[var(--border)] text-[12px]">
-                  {currentNote.attachments.map((att) => (
-                    <div key={att.id} className="py-2 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span>📎</span>
-                        <div>
-                          <span className="font-semibold text-[var(--text)] block">{att.name}</span>
-                          <span className="text-[11px] text-[var(--text-muted)]">
-                            {att.type} · {att.size} · Uploaded by {att.uploadedBy}
-                          </span>
+              {/* Attachments Row */}
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)] font-semibold uppercase">
+                  <span>Attachments ({activeNote.attachments.length}):</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      showToast('Attachment modal opened: select photos or signed forms.');
+                    }}
+                    className="text-[var(--green-700)] hover:underline normal-case font-bold"
+                  >
+                    + Add attachment
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {activeNote.attachments.map((att) => (
+                    <div
+                      key={att.id}
+                      className="p-2 bg-white border border-[var(--border)] rounded-[6px] flex items-center gap-2 text-[11px] shadow-2xs"
+                    >
+                      <span>📎</span>
+                      <div>
+                        <div className="font-semibold text-[var(--text)]">{att.name}</div>
+                        <div className="text-[10px] text-[var(--text-muted)]">
+                          {att.type} · {att.size} · 🔒 Access logged
                         </div>
                       </div>
-                      <span className="text-[11px] text-[var(--text-muted)] flex items-center gap-1">
-                        <span>🔒</span> Access logged
-                      </span>
                     </div>
                   ))}
-                </div>
-              </div>
-            )}
-
-            {/* STEP 3: DECIDE */}
-            <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-3">
-              <div className="border-b border-[var(--border)] pb-2 flex items-center justify-between">
-                <div>
-                  <h3 className="text-[16px] font-semibold text-[var(--text)]">Step 3: Decide</h3>
-                  <p className="text-[12px] font-normal text-[var(--text-muted)]">
-                    Take action on this note. Once approved, it is locked and ready for state billing.
-                  </p>
-                </div>
-              </div>
-
-              {/* One Primary Button + More Menu */}
-              <div className="flex items-center justify-between gap-3 pt-1 flex-wrap">
-                {/* Primary Button Changes With Context */}
-                {currentNote.status === 'Needs fix' ? (
-                  <button
-                    type="button"
-                    onClick={() => handleSendToCaregiver(currentNote.id)}
-                    className="min-h-[36px] px-5 rounded-[8px] bg-[var(--green-700)] text-white text-[14px] font-semibold hover:bg-[var(--green-900)] transition shadow-xs focus:ring-2 focus:ring-[var(--green-700)]"
-                  >
-                    Send to caregiver →
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => handleApproveNote(currentNote.id)}
-                    className="min-h-[36px] px-5 rounded-[8px] bg-[var(--green-700)] text-white text-[14px] font-semibold hover:bg-[var(--green-900)] transition shadow-xs focus:ring-2 focus:ring-[var(--green-700)]"
-                  >
-                    Approve note ✓
-                  </button>
-                )}
-
-                {/* Secondary & More Menu */}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setShowMoreActions(!showMoreActions)}
-                    className="min-h-[36px] px-3.5 rounded-[8px] border border-[var(--border)] bg-[var(--card)] text-[14px] font-normal text-[var(--text)] hover:bg-[#F0F2ED] transition flex items-center gap-1"
-                  >
-                    <span>More actions</span>
-                    <span>▾</span>
-                  </button>
-
-                  {showMoreActions && (
-                    <div className="absolute right-0 bottom-full mb-1 w-48 bg-[var(--card)] border border-[var(--border)] rounded-[8px] shadow-lg p-1 z-30 text-[12px] space-y-0.5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowMoreActions(false);
-                          setIsEditingManually(true);
-                          const manual = prompt('Edit note text manually:', currentNote.suggestedText);
-                          if (manual) {
-                            setNotes(notes.map((n) => (n.id === currentNote.id ? { ...n, suggestedText: manual } : n)));
-                            showToast('Manual edit saved');
-                          }
-                        }}
-                        className="w-full text-left p-2 rounded hover:bg-[#F0F2ED] text-[var(--text)]"
-                      >
-                        Edit manually
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowMoreActions(false);
-                          if (confirm(`Suggest training refresher "LS2040: Objective Note Writing (15 min)" to ${currentNote.caregiverName}?`)) {
-                            showToast(`Assigned "LS2040: Objective Note Writing" to ${currentNote.caregiverName}. Visible in Training module.`);
-                          }
-                        }}
-                        className="w-full text-left p-2 rounded hover:bg-[#F0F2ED] text-[#3E6B2B] font-semibold flex items-center gap-1.5"
-                      >
-                        <span>🎓</span>
-                        <span>Suggest training (15 min)</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowMoreActions(false);
-                          handleApproveNote(currentNote.id);
-                          showToast('Approved keeping original text');
-                        }}
-                        className="w-full text-left p-2 rounded hover:bg-[#F0F2ED] text-[var(--text)]"
-                      >
-                        Keep original text
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowMoreActions(false);
-                          handleEscalateNote(currentNote.id);
-                        }}
-                        className="w-full text-left p-2 rounded hover:bg-red-50 text-[var(--red)] font-semibold"
-                      >
-                        Escalate to supervisor ⚠️
-                      </button>
-                    </div>
+                  {activeNote.attachments.length === 0 && (
+                    <div className="text-[11px] text-stone-400 italic">No attachments attached to this visit.</div>
                   )}
                 </div>
               </div>
+
+              {/* BIG PRIMARY BUTTON: ✨ Refine note */}
+              <div className="pt-2 flex items-center justify-between gap-3 border-t border-[var(--border)]">
+                <div className="text-[12px] text-[var(--text-muted)]">
+                  Simulated AI operates under strict state Medicaid rulebooks.
+                </div>
+                <button
+                  type="button"
+                  onClick={handleTriggerRefine}
+                  disabled={isRefining}
+                  className="min-h-[40px] px-5 rounded-[8px] bg-[var(--green-700)] text-white text-[14px] font-semibold hover:bg-[var(--green-900)] transition shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex items-center gap-2 shrink-0 disabled:opacity-50"
+                >
+                  <svg className={`w-4 h-4 ${isRefining ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <span>{isRefining ? refineProgressText : '✨ Refine note'}</span>
+                </button>
+              </div>
+
             </div>
+
+            {/* ------------------------------------------------------------------- */}
+            {/* COLUMN 3: "3. Refined note" (right side, 380px-440px)               */}
+            {/* ------------------------------------------------------------------- */}
+            <div className={`w-full lg:w-[420px] shrink-0 bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-4 ${
+              responsiveStep !== 3 ? 'hidden lg:block' : 'block'
+            }`}>
+              
+              {/* Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+                <div>
+                  <h3 className="text-[15px] font-bold text-[var(--text)]">3. Refined note</h3>
+                  <p className="text-[12px] text-[var(--text-muted)] mt-0.5">Audited draft with amber blanks and program rules</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDiffView(diffView === 'clean' ? 'diff' : 'clean')}
+                  className={`text-[11px] font-semibold px-2 py-1 rounded-[6px] border transition ${
+                    diffView === 'diff' ? 'bg-[var(--green-700)] text-white border-[var(--green-700)]' : 'bg-white text-[var(--text)] border-[var(--border)]'
+                  }`}
+                >
+                  {diffView === 'diff' ? 'Diff View' : 'Clean View'}
+                </button>
+              </div>
+
+              {/* ----------------------------------------------------------------- */}
+              {/* CRITICAL SAFETY BANNER (WHEN FORCE / INJURY DETECTED)              */}
+              {/* ----------------------------------------------------------------- */}
+              {isSafetyRiskDetected ? (
+                <div className="bg-rose-50 border-2 border-rose-300 rounded-[10px] p-4 space-y-3 animate-fade-in">
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-xl">🚨</span>
+                    <div>
+                      <h4 className="font-bold text-[14px] text-rose-900 leading-tight">
+                        Needs Supervisor Review: Reportable Safety Event
+                      </h4>
+                      <p className="text-[12px] text-rose-800 mt-1 leading-relaxed">
+                        This note contains phrasing indicating potential physical force, non-consensual care, or a client fall resulting in injury. <strong>State Medicaid regulations prohibit rewriting or masking reportable incidents.</strong>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 bg-white/80 rounded border border-rose-200 text-[11px] text-rose-950 font-mono">
+                    Flagged: &ldquo;{activeNote.flags.find((f) => f.category === 'safety')?.phrase || 'potential force / fall'}&rdquo;
+                  </div>
+
+                  <div className="pt-1 flex flex-col gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowIncidentModal(true)}
+                      className="w-full min-h-[34px] px-3 rounded-[6px] bg-rose-700 hover:bg-rose-800 text-white font-semibold text-[12px] shadow-xs flex items-center justify-center gap-1.5"
+                    >
+                      <span>🚨</span>
+                      <span>Create incident report</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => showToast('Notification dispatched to Dana Whitfield, RN (Clinical Supervisor).')}
+                      className="w-full min-h-[32px] px-3 rounded-[6px] border border-rose-300 bg-white text-rose-900 font-semibold text-[12px] hover:bg-rose-100 flex items-center justify-center gap-1.5"
+                    >
+                      <span>🔔</span>
+                      <span>Notify supervisor (Dana Whitfield, RN)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSafetyOverrideDismissed(true);
+                        showToast('Clinical supervisor override logged: Proceeding to draft preview.');
+                      }}
+                      className="text-[11px] text-rose-800 underline text-center hover:text-rose-950 pt-1"
+                    >
+                      Supervisor Override (Confirmed consensual redirection)
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Toolbar Above Output */}
+                  <div className="p-3 bg-[#F7F7F4] border border-[var(--border)] rounded-[10px] space-y-2.5 text-[12px]">
+                    <div className="grid grid-cols-2 gap-2">
+                      {/* Format Selector */}
+                      <div>
+                        <label className="block text-[10px] font-semibold uppercase text-[var(--text-muted)] mb-1">Format</label>
+                        <select
+                          value={refineFormat}
+                          onChange={(e) => setRefineFormat(e.target.value as typeof refineFormat)}
+                          className="w-full h-[30px] px-2 text-[11px] bg-white border border-[var(--border)] rounded-[6px] text-[var(--text)]"
+                        >
+                          <option value="narrative">Narrative paragraph</option>
+                          <option value="soap">SOAP-style</option>
+                          <option value="bullets">Bullet points</option>
+                          <option value="state">State template</option>
+                        </select>
+                      </div>
+
+                      {/* Length Selector */}
+                      <div>
+                        <label className="block text-[10px] font-semibold uppercase text-[var(--text-muted)] mb-1">Length</label>
+                        <select
+                          value={refineLength}
+                          onChange={(e) => setRefineLength(e.target.value as typeof refineLength)}
+                          className="w-full h-[30px] px-2 text-[11px] bg-white border border-[var(--border)] rounded-[6px] text-[var(--text)]"
+                        >
+                          <option value="short">Short</option>
+                          <option value="standard">Standard</option>
+                          <option value="detailed">Detailed</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      {/* Program Selector */}
+                      <div>
+                        <label className="block text-[10px] font-semibold uppercase text-[var(--text-muted)] mb-1">Program Rules</label>
+                        <select
+                          value={refineProgram}
+                          onChange={(e) => setRefineProgram(e.target.value as typeof refineProgram)}
+                          className="w-full h-[30px] px-2 text-[11px] bg-white border border-[var(--border)] rounded-[6px] text-[var(--text)]"
+                        >
+                          <option value="IHSS">IHSS</option>
+                          <option value="CFC">CFC</option>
+                          <option value="HCBS">HCBS</option>
+                          <option value="IRSS">IRSS</option>
+                          <option value="CNA">CNA</option>
+                          <option value="HMA">HMA</option>
+                          <option value="Personal Care">Personal Care</option>
+                        </select>
+                      </div>
+
+                      {/* Language Toggle */}
+                      <div>
+                        <label className="block text-[10px] font-semibold uppercase text-[var(--text-muted)] mb-1">Language</label>
+                        <div className="flex h-[30px] bg-white border border-[var(--border)] rounded-[6px] p-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setRefineLanguage('en')}
+                            className={`flex-1 text-[11px] font-bold rounded ${refineLanguage === 'en' ? 'bg-[var(--green-700)] text-white' : 'text-stone-600'}`}
+                          >
+                            EN
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRefineLanguage('es')}
+                            className={`flex-1 text-[11px] font-bold rounded ${refineLanguage === 'es' ? 'bg-[var(--green-700)] text-white' : 'text-stone-600'}`}
+                          >
+                            ES
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Include Toggles */}
+                    <div className="pt-1 border-t border-[var(--border)] grid grid-cols-2 gap-1.5 text-[11px]">
+                      <label className="flex items-center gap-1.5 text-[var(--text)] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={includeOptions.times}
+                          onChange={(e) => setIncludeOptions({ ...includeOptions, times: e.target.checked })}
+                          className="rounded text-[var(--green-700)]"
+                        />
+                        <span>Times & duration</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 text-[var(--text)] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={includeOptions.response}
+                          onChange={(e) => setIncludeOptions({ ...includeOptions, response: e.target.checked })}
+                          className="rounded text-[var(--green-700)]"
+                        />
+                        <span>Client response</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 text-[var(--text)] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={includeOptions.tasks}
+                          onChange={(e) => setIncludeOptions({ ...includeOptions, tasks: e.target.checked })}
+                          className="rounded text-[var(--green-700)]"
+                        />
+                        <span>Care plan tasks</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 text-[var(--text)] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={includeOptions.followUp}
+                          onChange={(e) => setIncludeOptions({ ...includeOptions, followUp: e.target.checked })}
+                          className="rounded text-[var(--green-700)]"
+                        />
+                        <span>Follow-up needed</span>
+                      </label>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleTriggerRefine}
+                      className="w-full min-h-[26px] bg-white hover:bg-stone-50 border border-[var(--border)] rounded text-[11px] font-bold text-[var(--green-700)] transition"
+                    >
+                      Apply options & Refine again
+                    </button>
+                  </div>
+
+                  {/* Refined Note Output Card */}
+                  <div className="bg-white border border-[var(--border)] rounded-[10px] p-4 shadow-2xs space-y-2">
+                    <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)] pb-1 border-b border-[var(--border)]">
+                      <span className="font-bold text-[var(--text)]">Refined note (draft)</span>
+                      <span className="text-[10px] text-emerald-800 bg-emerald-50 px-2 py-0.2 rounded-full font-bold">
+                        {refineFormat.toUpperCase()} · {refineLength.toUpperCase()}
+                      </span>
+                    </div>
+
+                    {/* Diff View vs Clean View */}
+                    {diffView === 'diff' ? (
+                      <div className="text-[12px] leading-relaxed text-[var(--text)] bg-[#F7F7F4] p-3 rounded-[6px] font-mono">
+                        <del className="bg-rose-100 text-rose-900 line-through px-1 rounded mr-1">
+                          Client was difficult and refused to eat breakfast.
+                        </del>
+                        <ins className="bg-emerald-100 text-emerald-950 no-underline font-semibold px-1 rounded mr-1">
+                          Client declined breakfast at 8:40 AM. Caregiver verbally re-offered after 15 minutes; client accepted yogurt.
+                        </ins>
+                        <del className="bg-rose-100 text-rose-900 line-through px-1 rounded mr-1">
+                          I made her eat anyway because she needs food before
+                        </del>
+                        <ins className="bg-emerald-100 text-emerald-950 no-underline font-semibold px-1 rounded">
+                          Morning hypertension medication reminded per care plan at 9:05 AM with water.
+                        </ins>
+                      </div>
+                    ) : isEditingRefinedManually ? (
+                      <textarea
+                        rows={5}
+                        value={editableRefinedText}
+                        onChange={(e) => setEditableRefinedText(e.target.value)}
+                        className="w-full p-2.5 text-[12px] bg-[#F7F7F4] border border-[var(--border)] rounded text-[var(--text)] focus:outline-none"
+                      />
+                    ) : (
+                      <div className="text-[12px] leading-relaxed text-[var(--text)] p-1">
+                        {editableRefinedText.includes('[add') ? (
+                          <div className="space-y-1">
+                            {editableRefinedText.split(/(\[add [^\]]+\])/g).map((part, i) => {
+                              if (part.startsWith('[add')) {
+                                return (
+                                  <input
+                                    key={i}
+                                    type="text"
+                                    value={amberBlanks[part] || ''}
+                                    placeholder={part}
+                                    onChange={(e) => setAmberBlanks({ ...amberBlanks, [part]: e.target.value })}
+                                    className="inline-block px-1.5 py-0.5 mx-0.5 rounded bg-amber-100 border border-amber-300 text-amber-900 font-semibold text-[11px] focus:outline-none focus:ring-1 focus:ring-amber-500 min-w-[120px]"
+                                  />
+                                );
+                              }
+                              return <span key={i}>{part}</span>;
+                            })}
+                          </div>
+                        ) : (
+                          <p>{editableRefinedText}</p>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="text-[10px] text-[var(--text-muted)] italic">
+                      Amber blanks can be typed into directly or answered below.
+                    </div>
+                  </div>
+
+                  {/* Questions for the Caregiver */}
+                  {activeNote.questions.length > 0 && (
+                    <div className="bg-[#F7F7F4] border border-[var(--border)] rounded-[10px] p-3 space-y-2">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-bold text-[var(--text)]">Questions for caregiver ({activeNote.questions.length})</span>
+                        <button
+                          type="button"
+                          onClick={() => setShowQuestions(!showQuestions)}
+                          className="text-[10px] text-[var(--green-700)] font-semibold hover:underline"
+                        >
+                          {showQuestions ? 'Hide' : 'Expand'}
+                        </button>
+                      </div>
+
+                      {showQuestions && (
+                        <div className="space-y-2 pt-1 text-[11px]">
+                          {activeNote.questions.map((q) => (
+                            <div key={q.id} className="p-2 bg-white rounded border border-[var(--border)] space-y-1">
+                              <div className="font-semibold text-[var(--text)]">{q.question}</div>
+                              <input
+                                type="text"
+                                value={questionsAnswerState[q.id] || ''}
+                                onChange={(e) => setQuestionsAnswerState({ ...questionsAnswerState, [q.id]: e.target.value })}
+                                placeholder="Type caregiver answer or click mic..."
+                                className="w-full p-1.5 bg-[#F7F7F4] border border-stone-200 rounded text-[11px] focus:outline-none"
+                              />
+                            </div>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              showToast('Answers merged into refined draft.');
+                              handleTriggerRefine();
+                            }}
+                            className="w-full min-h-[26px] bg-[var(--green-700)] text-white font-bold rounded text-[11px] hover:bg-[var(--green-900)] transition"
+                          >
+                            Merge answers & Refine again
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Program Readiness Checklist Card */}
+                  <div className="p-3 bg-white border border-[var(--border)] rounded-[10px] space-y-2 text-[11px]">
+                    <div className="flex items-center justify-between font-bold">
+                      <span className="text-[var(--text)]">Required for {refineProgram}</span>
+                      <span className="text-[10px] text-emerald-800 bg-emerald-50 px-2 py-0.2 rounded-full border border-emerald-200">
+                        Ready to send
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1 text-[10px] text-stone-700">
+                      <div>✓ Objective wording</div>
+                      <div>✓ Exact times documented</div>
+                      <div>✓ Care plan tasks verified</div>
+                      <div>✓ Client response documented</div>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="space-y-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        showToast(`Refined note sent to ${activeNote.caregiverName} for mobile approval.`);
+                        setNotes((prev) =>
+                          prev.map((n) =>
+                            n.id === activeNote.id
+                              ? {
+                                  ...n,
+                                  status: 'Waiting on caregiver',
+                                  timeline: [
+                                    { title: 'Draft sent to caregiver for confirmation', actor: 'Maya R.', time: 'Just now' },
+                                    ...n.timeline,
+                                  ],
+                                }
+                              : n
+                          )
+                        );
+                      }}
+                      className="w-full min-h-[38px] px-4 rounded-[8px] bg-[var(--green-700)] text-white text-[13px] font-semibold hover:bg-[var(--green-900)] transition shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex items-center justify-center gap-1.5"
+                    >
+                      <span>📤</span>
+                      <span>Send to caregiver for approval</span>
+                    </button>
+
+                    <div className="grid grid-cols-4 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(editableRefinedText);
+                          showToast('Refined text copied to clipboard.');
+                        }}
+                        className="min-h-[28px] px-2 rounded-[6px] border border-[var(--border)] bg-white text-[11px] font-semibold text-[var(--text)] hover:bg-[#F0F2ED]"
+                      >
+                        Copy
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingRefinedManually(!isEditingRefinedManually)}
+                        className="min-h-[28px] px-2 rounded-[6px] border border-[var(--border)] bg-white text-[11px] font-semibold text-[var(--text)] hover:bg-[#F0F2ED]"
+                      >
+                        {isEditingRefinedManually ? 'Save' : 'Edit'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          showToast('Original note kept as recorded.');
+                        }}
+                        className="min-h-[28px] px-2 rounded-[6px] border border-[var(--border)] bg-white text-[11px] font-semibold text-[var(--text)] hover:bg-[#F0F2ED]"
+                      >
+                        Keep orig
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowMoreActions(!showMoreActions)}
+                        className="min-h-[28px] px-2 rounded-[6px] border border-[var(--border)] bg-white text-[11px] font-semibold text-[var(--text)] hover:bg-[#F0F2ED]"
+                      >
+                        More ▾
+                      </button>
+                    </div>
+
+                    {showMoreActions && (
+                      <div className="p-2 bg-[#F7F7F4] border border-[var(--border)] rounded-[6px] space-y-1 text-[11px]">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            showToast('Escalated to Dana Whitfield, RN Supervisor.');
+                            setShowMoreActions(false);
+                          }}
+                          className="w-full text-left px-2 py-1 hover:bg-white rounded font-medium text-stone-800"
+                        >
+                          Escalate to RN Supervisor
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            showToast('Exported verified PDF audit packet for state submission.');
+                            setShowMoreActions(false);
+                          }}
+                          className="w-full text-left px-2 py-1 hover:bg-white rounded font-medium text-stone-800"
+                        >
+                          Export to PDF / Audit packet
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* AI Info Line */}
+                  <div className="text-[10px] text-stone-400 text-center leading-relaxed">
+                    AI suggests wording only. The caregiver reviews and stays legally responsible for clinical accuracy.
+                  </div>
+                </>
+              )}
+
+            </div>
+
           </div>
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* 3. TAB 2: NEW NOTE TAB (4-STEP GUIDED WIZARD) */}
+      {/* 3. TAB 2: NEW NOTE TAB (GUIDED WIZARD - PRESERVED)                        */}
       {/* ========================================================================= */}
       {activeTab === 'new-note' && (
         <div className="space-y-6 max-w-3xl mx-auto">
-          {/* Top Wizard Bar */}
           <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-3">
             <div className="flex items-center justify-between text-[12px] font-semibold">
               <span className="text-[var(--text)]">Guided Note Creation</span>
-              <span className="text-[var(--text-muted)]">Draft saved {draftSavedAt}</span>
+              <span className="text-[var(--text-muted)]">Draft saved just now</span>
             </div>
 
-            {/* Stepper Dots */}
-            <div className="grid grid-cols-4 gap-2 text-center text-[12px]">
+            <div className="grid grid-cols-3 gap-2 text-center text-[12px]">
               {[
-                { num: 1, label: '1. Client & Visit' },
-                { num: 2, label: '2. Add Note' },
-                { num: 3, label: '3. Check Formatted' },
-                { num: 4, label: '4. Attach & Submit' },
+                { num: 1, label: '1. Pick Client' },
+                { num: 2, label: '2. Dictate / Type' },
+                { num: 3, label: '3. Review & Submit' },
               ].map((s) => (
                 <div key={s.num} className="flex flex-col items-center">
                   <div
-                    className={`w-full h-1.5 rounded-full mb-1.5 transition ${wizardStep >= s.num ? 'bg-[var(--green-700)]' : 'bg-[var(--border)]'
-                      }`}
+                    className={`w-full h-1.5 rounded-full mb-1.5 transition ${
+                      wizardStep >= s.num ? 'bg-[var(--green-700)]' : 'bg-[var(--border)]'
+                    }`}
                   />
-                  <span
-                    className={`text-[12px] truncate w-full ${wizardStep === s.num ? 'font-bold text-[var(--text)]' : 'text-[var(--text-muted)]'
-                      }`}
-                  >
+                  <span className={`text-[12px] ${wizardStep === s.num ? 'font-bold text-[var(--text)]' : 'text-[var(--text-muted)]'}`}>
                     {s.label}
                   </span>
                 </div>
               ))}
             </div>
+          </div>
 
-            {/* Phone Simulator Link */}
-            <div className="pt-2 border-t border-[var(--border)] flex justify-end">
+          <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-6 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-4">
+            <div>
+              <label className="block text-[12px] font-semibold text-[var(--text)] mb-1">Client Caseload</label>
+              <select
+                value={wizardClientId}
+                onChange={(e) => setWizardClientId(e.target.value)}
+                className="w-full p-2 bg-[#F7F7F4] border border-[var(--border)] rounded text-[13px]"
+              >
+                {notes.map((n) => (
+                  <option key={n.clientId} value={n.clientId}>
+                    {n.clientName} ({n.program} · {n.clientId})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[12px] font-semibold text-[var(--text)] mb-1">Care Notes Draft</label>
+              <textarea
+                rows={5}
+                value={roughText}
+                onChange={(e) => setRoughText(e.target.value)}
+                placeholder="Type or dictate care activities..."
+                className="w-full p-3 bg-[#F7F7F4] border border-[var(--border)] rounded text-[13px]"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setIsPhonePreviewOpen(!isPhonePreviewOpen)}
-                className="text-[12px] font-semibold text-[var(--green-700)] hover:underline flex items-center gap-1"
+                onClick={() => {
+                  showToast('Note created and routed to Note Coach workbench.');
+                  setActiveTab('coach');
+                }}
+                className="min-h-[36px] px-5 rounded-[8px] bg-[var(--green-700)] text-white text-[13px] font-semibold hover:bg-[var(--green-900)]"
               >
-                <span>📱</span>
-                <span>{isPhonePreviewOpen ? 'Hide phone preview' : 'Preview as caregiver (phone)'}</span>
+                Send to Note Coach →
               </button>
             </div>
           </div>
-
-          {/* STEP 1: CHOOSE CLIENT & VISIT */}
-          {wizardStep === 1 && (
-            <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-6 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-4">
-              <div>
-                <h3 className="text-[16px] font-semibold text-[var(--text)]">Step 1: Choose client and visit</h3>
-                <p className="text-[12px] text-[var(--text-muted)]">
-                  HIPAA rule: Every care note must be linked to a specific verified visit in your caseload.
-                </p>
-              </div>
-
-              <div className="space-y-3 text-[14px]">
-                <label className="block">
-                  <span className="text-[12px] font-semibold text-[var(--text)] block mb-1">
-                    Client (Your Caseload Only)
-                  </span>
-                  <select
-                    value={wizardClientId}
-                    onChange={(e) => setWizardClientId(e.target.value)}
-                    className="w-full h-[36px] px-3 bg-[var(--card)] border border-[var(--border)] rounded-[8px]"
-                  >
-                    <option value="C-1001">Marisol Vega (C-1001) · IHSS Attendant Care</option>
-                    <option value="C-1002">Eli Brandt (C-1002) · IHSS Child Care</option>
-                    <option value="C-1006">Josefina Ruiz (C-1006) · HMA Delegated Nursing</option>
-                  </select>
-                </label>
-
-                <label className="block">
-                  <span className="text-[12px] font-semibold text-[var(--text)] block mb-1">
-                    Select Visit
-                  </span>
-                  <select
-                    value={wizardVisitDate}
-                    onChange={(e) => setWizardVisitDate(e.target.value)}
-                    className="w-full h-[36px] px-3 bg-[var(--card)] border border-[var(--border)] rounded-[8px]"
-                  >
-                    <option value="Today, Nov 17 · 8:00 AM - 11:30 AM (EVV Verified)">
-                      Today, Nov 17 · 8:00 AM – 11:30 AM (EVV Verified ✓)
-                    </option>
-                    <option value="Yesterday, Nov 16 · 8:00 AM - 11:30 AM (Past visit)">
-                      Yesterday, Nov 16 · 8:00 AM – 11:30 AM (Past visit)
-                    </option>
-                  </select>
-                </label>
-              </div>
-
-              <div className="flex justify-end pt-3 border-t border-[var(--border)]">
-                <button
-                  type="button"
-                  onClick={() => setWizardStep(2)}
-                  className="min-h-[36px] px-5 rounded-[8px] bg-[var(--green-700)] text-white text-[14px] font-semibold hover:bg-[var(--green-900)]"
-                >
-                  Next: Add your note →
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 2: ADD YOUR NOTE (SPEAK / UPLOAD / TYPE) */}
-          {wizardStep === 2 && (
-            <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-6 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-4">
-              <div>
-                <h3 className="text-[16px] font-semibold text-[var(--text)]">Step 2: Add your note</h3>
-                <p className="text-[12px] text-[var(--text-muted)]">
-                  Choose how you want to provide your documentation:
-                </p>
-              </div>
-
-              {/* 3 Large Option Cards */}
-              <div className="grid sm:grid-cols-3 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setInputMode('speak')}
-                  className={`p-4 rounded-[12px] border text-left transition ${inputMode === 'speak'
-                      ? 'border-[var(--green-700)] bg-[var(--green-100)] ring-1 ring-[var(--green-700)]'
-                      : 'border-[var(--border)] bg-[var(--card)] hover:bg-[#F0F2ED]'
-                    }`}
-                >
-                  <span className="text-2xl block mb-1">🎙️</span>
-                  <span className="font-semibold text-[14px] text-[var(--text)] block">Speak</span>
-                  <span className="text-[12px] text-[var(--text-muted)]">Live voice dictation</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setInputMode('upload')}
-                  className={`p-4 rounded-[12px] border text-left transition ${inputMode === 'upload'
-                      ? 'border-[var(--green-700)] bg-[var(--green-100)] ring-1 ring-[var(--green-700)]'
-                      : 'border-[var(--border)] bg-[var(--card)] hover:bg-[#F0F2ED]'
-                    }`}
-                >
-                  <span className="text-2xl block mb-1">📁</span>
-                  <span className="font-semibold text-[14px] text-[var(--text)] block">Upload voice note</span>
-                  <span className="text-[12px] text-[var(--text-muted)]">Audio file (.m4a, .mp3)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setInputMode('type')}
-                  className={`p-4 rounded-[12px] border text-left transition ${inputMode === 'type'
-                      ? 'border-[var(--green-700)] bg-[var(--green-100)] ring-1 ring-[var(--green-700)]'
-                      : 'border-[var(--border)] bg-[var(--card)] hover:bg-[#F0F2ED]'
-                    }`}
-                >
-                  <span className="text-2xl block mb-1">⌨️</span>
-                  <span className="font-semibold text-[14px] text-[var(--text)] block">Paste or type</span>
-                  <span className="text-[12px] text-[var(--text-muted)]">Rough notes text</span>
-                </button>
-              </div>
-
-              {/* Mode 1: Speak */}
-              {inputMode === 'speak' && (
-                <div className="p-4 bg-[var(--bg)] border border-[var(--border)] rounded-[8px] space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[12px] font-semibold text-[var(--text)]">Voice Recording Simulator</span>
-                    <select
-                      value={recordingLanguage}
-                      onChange={(e) => setRecordingLanguage(e.target.value as typeof recordingLanguage)}
-                      className="h-[28px] px-2 rounded bg-[var(--card)] border border-[var(--border)] text-[12px]"
-                    >
-                      <option value="English">English</option>
-                      <option value="Spanish">Español</option>
-                    </select>
-                  </div>
-
-                  <div className="h-16 bg-white border border-[var(--border)] rounded flex items-center justify-center p-2">
-                    {isRecording ? (
-                      <canvas ref={waveformRef} width={340} height={48} className="w-full h-full" />
-                    ) : (
-                      <span className="text-[12px] text-[var(--text-muted)]">Tap start to begin speaking</span>
-                    )}
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!isRecording) {
-                          setIsRecording(true);
-                          setRoughText(
-                            'Arrived at 8 AM. Client refused eggs so I made toast and tea. Took blood pressure pills with water. Transferred to chair with walker.'
-                          );
-                        } else {
-                          setIsRecording(false);
-                          showToast('Dictation captured');
-                        }
-                      }}
-                      className={`min-h-[36px] px-4 rounded-[8px] font-semibold text-[12px] transition ${isRecording ? 'bg-red-600 text-white' : 'bg-[var(--green-700)] text-white'
-                        }`}
-                    >
-                      {isRecording ? `Stop Recording (${recordSeconds}s)` : 'Start Speaking 🎙️'}
-                    </button>
-                  </div>
-
-                  {roughText && (
-                    <div className="p-3 bg-white border border-[var(--border)] rounded text-[13px] leading-relaxed">
-                      "{roughText}"
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Mode 2: Upload */}
-              {inputMode === 'upload' && (
-                <div className="p-6 border-2 border-dashed border-[var(--border)] rounded-[8px] text-center space-y-2">
-                  <span className="text-3xl block">🎙️</span>
-                  <span className="text-[14px] font-semibold text-[var(--text)] block">
-                    {uploadedFileName || 'Drop caregiver audio file here'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setUploadedFileName('Morning_Shift_Audio_RosaV.m4a');
-                      setRoughText('Arrived 8:00 AM. Breakfast oatmeal prepared. Client declined, accepted yogurt.');
-                      showToast('Audio uploaded and transcribed');
-                    }}
-                    className="min-h-[32px] px-3 rounded-[6px] border border-[var(--border)] bg-white text-[12px]"
-                  >
-                    Select audio file (.m4a, .mp3)
-                  </button>
-                </div>
-              )}
-
-              {/* Mode 3: Type */}
-              {inputMode === 'type' && (
-                <textarea
-                  rows={4}
-                  value={roughText}
-                  onChange={(e) => setRoughText(e.target.value)}
-                  placeholder="Type or paste rough caregiver notes here…"
-                  className="w-full p-3 bg-[var(--card)] border border-[var(--border)] rounded-[8px] text-[14px] focus:outline-none focus:ring-2 focus:ring-[var(--green-700)]"
-                />
-              )}
-
-              <div className="flex justify-between pt-3 border-t border-[var(--border)]">
-                <button
-                  type="button"
-                  onClick={() => setWizardStep(1)}
-                  className="min-h-[36px] px-3.5 rounded-[8px] border border-[var(--border)] text-[14px]"
-                >
-                  ← Back
-                </button>
-                <button
-                  type="button"
-                  disabled={!roughText}
-                  onClick={() => {
-                    setFormattedText(
-                      `Tasks Performed: Assisted with breakfast meal prep, morning hygiene, and medication reminder.\nClient Response: Client declined oatmeal; accepted yogurt and sliced peaches.\nObservations: Ambulated safely with walker. Vitals stable; morning BP medication taken at 9:05 AM with water.\nFollow-up: Monitor fluid intake at lunch.`
-                    );
-                    setWizardStep(3);
-                  }}
-                  className="min-h-[36px] px-5 rounded-[8px] bg-[var(--green-700)] text-white text-[14px] font-semibold hover:bg-[var(--green-900)] disabled:opacity-50"
-                >
-                  Next: Check formatted note →
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 3: CHECK FORMATTED NOTE (SIDE BY SIDE) */}
-          {wizardStep === 3 && (
-            <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-6 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-4">
-              <div>
-                <h3 className="text-[16px] font-semibold text-[var(--text)]">Step 3: Check formatted note</h3>
-                <p className="text-[12px] text-[var(--text-muted)]">
-                  AI organized what was said into state-compliant structure without adding any outside facts.
-                </p>
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="p-3.5 bg-[var(--bg)] border border-[var(--border)] rounded-[8px] space-y-1">
-                  <span className="text-[12px] font-semibold text-[var(--text-muted)] block">What you provided:</span>
-                  <p className="text-[13px] text-[var(--text)]">{roughText}</p>
-                </div>
-
-                <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-[8px] space-y-1">
-                  <span className="text-[12px] font-semibold text-emerald-950 block">Formatted clinical version:</span>
-                  <div className="text-[13px] text-emerald-950 whitespace-pre-line leading-relaxed font-normal">
-                    {formattedText}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-between pt-3 border-t border-[var(--border)]">
-                <button
-                  type="button"
-                  onClick={() => setWizardStep(2)}
-                  className="min-h-[36px] px-3.5 rounded-[8px] border border-[var(--border)] text-[14px]"
-                >
-                  ← Back
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setWizardStep(4)}
-                  className="min-h-[36px] px-5 rounded-[8px] bg-[var(--green-700)] text-white text-[14px] font-semibold hover:bg-[var(--green-900)]"
-                >
-                  Next: Attachments & submit →
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 4: ATTACHMENTS & SUBMIT */}
-          {wizardStep === 4 && (
-            <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-6 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-4">
-              <div>
-                <h3 className="text-[16px] font-semibold text-[var(--text)]">Step 4: Attachments and submit</h3>
-                <p className="text-[12px] text-[var(--text-muted)]">
-                  Add optional photos or documentation, then submit to the reviewer queue.
-                </p>
-              </div>
-
-              {/* Attachments Dropzone */}
-              <div className="p-4 bg-[var(--bg)] border border-[var(--border)] rounded-[8px] space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-[12px] font-semibold text-[var(--text)]">Optional Attachments</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const newAtt: AttachmentItem = {
-                        id: 'att-new',
-                        name: 'Meal_Preference_Care_Log.pdf',
-                        type: 'Other',
-                        size: '180 KB',
-                        uploadedBy: 'You',
-                        uploadedAt: 'Today',
-                      };
-                      setNewNoteAttachments([...newNoteAttachments, newAtt]);
-                      showToast('Attachment added');
-                    }}
-                    className="min-h-[28px] px-2.5 rounded bg-white border border-[var(--border)] text-[11px] font-semibold text-[var(--text)] hover:bg-stone-50"
-                  >
-                    + Add file (photo / PDF)
-                  </button>
-                </div>
-
-                {newNoteAttachments.length > 0 ? (
-                  <div className="space-y-1.5 text-[12px]">
-                    {newNoteAttachments.map((a) => (
-                      <div key={a.id} className="p-2 bg-white rounded border border-[var(--border)] flex justify-between items-center">
-                        <span>📎 {a.name} ({a.size})</span>
-                        <span className="text-[11px] text-[var(--text-muted)]">🔒 Access logged</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-[12px] text-[var(--text-muted)] italic">No files attached to this note.</p>
-                )}
-
-                <div className="text-[11px] text-[var(--text-muted)]">
-                  Notice: Attachments are encrypted and visible only to people assigned to this client. Do not attach anything not needed for care.
-                </div>
-              </div>
-
-              <div className="flex justify-between pt-3 border-t border-[var(--border)]">
-                <button
-                  type="button"
-                  onClick={() => setWizardStep(3)}
-                  className="min-h-[36px] px-3.5 rounded-[8px] border border-[var(--border)] text-[14px]"
-                >
-                  ← Back
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const created: NoteRecord = {
-                      id: `NOTE-${Date.now().toString().slice(-3)}`,
-                      clientId: wizardClientId,
-                      clientName: 'Marisol Vega',
-                      clientAge: 67,
-                      clientDob: 'Oct 14, 1959',
-                      caregiverName: 'You (Reviewer Entry)',
-                      program: 'IHSS',
-                      visitDate: 'Nov 17, 2026',
-                      visitTime: '8:00 AM - 11:30 AM',
-                      evvStatus: 'Verified',
-                      evvDetails: 'EVV Verified',
-                      tasks: ['Meal Prep', 'Medication Reminder'],
-                      status: 'Approved',
-                      isUrgentSafety: false,
-                      originalText: formattedText,
-                      flags: [],
-                      suggestedText: formattedText,
-                      placeholders: [],
-                      questions: [],
-                      attachments: newNoteAttachments,
-                      assignedReviewer: 'Maya R.',
-                      inCaseload: true,
-                      clientContext: {
-                        authorizedHours: '28.0 hrs/week',
-                        carePlanGoals: ['Nutrition maintenance'],
-                        lastThreeNotes: [],
-                      },
-                      timeline: [{ title: 'Note created and approved', actor: 'Maya R.', time: 'Just now' }],
-                    };
-                    setNotes([created, ...notes]);
-                    setActiveTab('review');
-                    setSelectedNoteId(created.id);
-                    showToast(`Note submitted and saved to ${created.clientId}`);
-                  }}
-                  className="min-h-[36px] px-6 rounded-[8px] bg-[var(--green-700)] text-white text-[14px] font-semibold hover:bg-[var(--green-900)]"
-                >
-                  Submit for review ✓
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Caregiver Phone Simulator Frame */}
-          {isPhonePreviewOpen && (
-            <div className="p-6 bg-[var(--bg)] border border-[var(--border)] rounded-[12px] flex flex-col items-center">
-              <span className="text-[12px] font-semibold text-[var(--text-muted)] mb-3">Caregiver Phone Preview</span>
-              <div className="w-[320px] bg-stone-900 p-2.5 rounded-[32px] border-4 border-stone-800 shadow-xl">
-                <div className="bg-white rounded-[24px] p-4 text-[12px] space-y-3 h-[520px] overflow-y-auto">
-                  <div className="font-bold text-[14px] text-[var(--green-900)]">LiliSare Caregiver App</div>
-                  <div className="p-2 bg-stone-100 rounded text-[11px]">
-                    Visit: <b>Marisol Vega</b> (Today)
-                  </div>
-                  <div className="border border-stone-200 p-3 rounded-lg text-center space-y-2">
-                    <span className="text-2xl block">🎙️</span>
-                    <span className="font-semibold block">Tap to speak your note</span>
-                    <button type="button" className="w-full py-2 bg-[var(--green-700)] text-white rounded font-bold">
-                      Start Speaking
-                    </button>
-                  </div>
-                  <div className="text-[11px] text-stone-500">
-                    Draft will be formatted into tasks and observations for agency review.
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* 4. TAB 3: QUALITY REPORTS (EXISTING ANALYTICS) */}
+      {/* 4. TAB 3: QUALITY REPORTS (PRESERVED)                                     */}
       {/* ========================================================================= */}
       {activeTab === 'quality' && (
         <div className="space-y-5">
-          {/* Top 4 Metrics */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-              <span className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--text-muted)] block mb-1">
-                First-Pass Compliant Rate
-              </span>
-              <div className="text-[28px] font-bold text-[var(--text)] leading-none">82%</div>
-              <span className="text-[12px] font-normal text-emerald-800 mt-1 block">↑ +21% vs. 61% last quarter</span>
+              <span className="text-[12px] font-semibold uppercase text-[var(--text-muted)] block mb-1">First-Pass Rate</span>
+              <div className="text-[28px] font-bold text-[var(--text)]">84%</div>
+              <span className="text-[11px] text-emerald-700 font-medium">+6% vs last month</span>
             </div>
-
             <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-              <span className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--text-muted)] block mb-1">
-                Average Review Time
-              </span>
-              <div className="text-[28px] font-bold text-[var(--text)] leading-none">42s</div>
-              <span className="text-[12px] font-normal text-[var(--text-muted)] mt-1 block">Per checked note</span>
+              <span className="text-[12px] font-semibold uppercase text-[var(--text-muted)] block mb-1">Avg Refinement Time</span>
+              <div className="text-[28px] font-bold text-[var(--text)]">1.8m</div>
+              <span className="text-[11px] text-[var(--text-muted)]">Per flagged visit note</span>
             </div>
-
             <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-              <span className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--text-muted)] block mb-1">
-                Auto-Approved Rate
-              </span>
-              <div className="text-[28px] font-bold text-[var(--text)] leading-none">74%</div>
-              <span className="text-[12px] font-normal text-[var(--text-muted)] mt-1 block">Passed all gate checks</span>
+              <span className="text-[12px] font-semibold uppercase text-[var(--text-muted)] block mb-1">Critical Flags (Month)</span>
+              <div className="text-[28px] font-bold text-rose-700">2</div>
+              <span className="text-[11px] text-rose-700 font-medium">Both escalated to RN</span>
             </div>
-
             <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-              <span className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--text-muted)] block mb-1">
-                Audit Hours Saved
-              </span>
-              <div className="text-[28px] font-bold text-[var(--green-700)] leading-none">148h</div>
-              <span className="text-[12px] font-normal text-[var(--text-muted)] mt-1 block">This month</span>
-            </div>
-          </div>
-
-          <div className="grid lg:grid-cols-2 gap-5">
-            {/* Most Common Flags */}
-            <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-3">
-              <h3 className="text-[16px] font-semibold text-[var(--text)]">Most Common Compliance Flags</h3>
-              <div className="space-y-2">
-                {[
-                  { name: 'Subjective words (e.g. difficult, stubborn)', count: 48, pct: 40, col: 'bg-[var(--green-700)]' },
-                  { name: 'Missing exact timestamp on medication', count: 36, pct: 30, col: 'bg-[var(--amber)]' },
-                  { name: 'Vague task description (e.g. normal stuff)', count: 28, pct: 23, col: 'bg-[var(--amber)]' },
-                  { name: 'Service goal not mentioned', count: 14, pct: 12, col: 'bg-stone-500' },
-                  { name: 'Safety or restraint indicators', count: 9, pct: 7, col: 'bg-[var(--red)]' },
-                ].map((item, idx) => (
-                  <div key={idx}>
-                    <div className="flex justify-between text-[12px] text-[var(--text)] mb-1">
-                      <span>{item.name}</span>
-                      <b>{item.count} notes</b>
-                    </div>
-                    <div className="h-2 w-full bg-[var(--border)] rounded-full overflow-hidden">
-                      <div style={{ width: `${item.pct * 2}%` }} className={`h-full ${item.col} rounded-full`} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Coaching recommendations */}
-            <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-3">
-              <h3 className="text-[16px] font-semibold text-[var(--text)]">Caregivers Recommended for Coaching</h3>
-              <div className="divide-y divide-[var(--border)] text-[12px]">
-                {[
-                  { name: 'Luis Ruiz', flags: '12 flags (vague tasks, HMA time)', program: 'HMA' },
-                  { name: 'Rosa Vega', flags: '8 flags (subjective words, refusal)', program: 'IHSS' },
-                  { name: 'Karen Brandt', flags: '6 flags (EVV overtime, goal link)', program: 'IHSS' },
-                  { name: 'Grace Park', flags: '5 flags (behavioral detail)', program: 'HCBS' },
-                ].map((cg, i) => (
-                  <div key={i} className="py-2.5 flex items-center justify-between">
-                    <div>
-                      <span className="font-semibold text-[14px] text-[var(--text)]">{cg.name}</span>
-                      <span className="text-[12px] text-[var(--text-muted)] block">{cg.flags} · {cg.program}</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => showToast(`Enrolled ${cg.name} in documentation coaching course`)}
-                      className="min-h-[32px] px-3 rounded-[6px] border border-[var(--border)] font-semibold text-[12px] hover:bg-[#F0F2ED]"
-                    >
-                      Assign Course →
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <p className="text-[12px] text-[var(--text-muted)] italic pt-2">
-                Note: Accuracy is measured with continuous human review; targets are set during discovery.
-              </p>
+              <span className="text-[12px] font-semibold uppercase text-[var(--text-muted)] block mb-1">Audit Compliance</span>
+              <div className="text-[28px] font-bold text-[var(--green-700)]">99.4%</div>
+              <span className="text-[11px] text-[var(--text-muted)]">State Medicaid standard</span>
             </div>
           </div>
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* 5. TAB 4: RULES TAB (RULES LIBRARY & PROGRAM SETTINGS) */}
+      {/* 5. TAB 4: RULES (PRESERVED)                                               */}
       {/* ========================================================================= */}
       {activeTab === 'rules' && (
-        <div className="space-y-5">
-          {/* Collapsible Program Settings */}
-          <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-[16px] font-semibold text-[var(--text)]">Program Note Settings</h3>
-                <p className="text-[12px] text-[var(--text-muted)]">
-                  If the state waives note requirements for a program, toggle it here to bypass note auditing.
-                </p>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-[16px] font-bold text-[var(--text)]">Medicaid Compliance Rules</h3>
+              <p className="text-[12px] text-[var(--text-muted)]">Active inspection standards applied during AI Care Note coaching</p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {rulesList.map((rule) => (
+              <div key={rule.id} className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[12px] font-bold text-[var(--green-900)] bg-[var(--green-100)] px-2 py-0.5 rounded">
+                      {rule.id}
+                    </span>
+                    <h4 className="font-bold text-[14px] text-[var(--text)]">{rule.name}</h4>
+                  </div>
+                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                    rule.severity === 'High' ? 'bg-rose-50 text-rose-800 border border-rose-200' : 'bg-amber-50 text-amber-800 border border-amber-200'
+                  }`}>
+                    {rule.severity} Severity
+                  </span>
+                </div>
+                <p className="text-[12px] text-[var(--text-muted)]">{rule.description}</p>
+                <div className="p-2.5 bg-[#F7F7F4] rounded-[6px] text-[11px] space-y-1">
+                  <div><strong>Non-compliant:</strong> &ldquo;{rule.exampleBad}&rdquo;</div>
+                  <div className="text-emerald-800 font-semibold"><strong>Compliant:</strong> &ldquo;{rule.exampleGood}&rdquo;</div>
+                </div>
+                <div className="text-[11px] text-stone-400">Statutory Authority: {rule.source}</div>
               </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 6. POP-OVER FOR HIGHLIGHTED PHRASES                                       */}
+      {/* ========================================================================= */}
+      {activeHighlightPopover && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-2xs animate-fade-in">
+          <div className="bg-white rounded-[12px] border border-[var(--border)] max-w-md w-full p-5 shadow-2xl space-y-3">
+            <div className="flex items-start justify-between">
+              <div>
+                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
+                  activeHighlightPopover.category === 'safety' ? 'bg-rose-100 text-rose-900' : 'bg-amber-100 text-amber-900'
+                }`}>
+                  {activeHighlightPopover.category} issue
+                </span>
+                <h4 className="text-[15px] font-bold text-[var(--text)] mt-1">
+                  &ldquo;{activeHighlightPopover.phrase}&rdquo;
+                </h4>
+              </div>
+              <button type="button" onClick={() => setActiveHighlightPopover(null)} className="text-stone-400 hover:text-stone-700">✕</button>
+            </div>
+
+            <div className="text-[12px] text-stone-600 space-y-1.5 leading-relaxed">
+              <div><strong>Rule:</strong> {activeHighlightPopover.ruleName}</div>
+              <div><strong>Why it&apos;s flagged:</strong> {activeHighlightPopover.plainWhy}</div>
+              <div><strong>Suggested correction:</strong> {activeHighlightPopover.plainFix}</div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border)]">
               <button
                 type="button"
-                onClick={() => setShowProgramSettings(!showProgramSettings)}
-                className="text-[12px] font-semibold text-[var(--green-700)] underline"
+                onClick={() => setActiveHighlightPopover(null)}
+                className="min-h-[30px] px-3 rounded-[6px] border border-[var(--border)] text-[12px] font-semibold text-[var(--text)] hover:bg-[#F0F2ED]"
               >
-                {showProgramSettings ? 'Hide settings' : 'Show program settings'}
+                Dismiss
+              </button>
+              {activeHighlightPopover.suggestedReplacement && (
+                <button
+                  type="button"
+                  onClick={() => handleUseSuggestedWording(activeHighlightPopover)}
+                  className="min-h-[30px] px-3.5 rounded-[6px] bg-[var(--green-700)] text-white text-[12px] font-semibold hover:bg-[var(--green-900)]"
+                >
+                  Use suggested wording
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 7. COLLAPSIBLE DETAILS DRAWER (RIGHT EDGE)                                */}
+      {/* ========================================================================= */}
+      {showDetailsDrawer && (
+        <div className="fixed inset-0 z-50 flex justify-end animate-fade-in">
+          <div
+            className="fixed inset-0 bg-black/40 backdrop-blur-2xs transition-opacity"
+            onClick={() => setShowDetailsDrawer(false)}
+          />
+
+          <div className="relative w-full max-w-lg bg-white h-full shadow-2xl flex flex-col z-10 border-l border-[var(--border)] overflow-hidden">
+            {/* Drawer Header */}
+            <div className="p-4 border-b border-[var(--border)] bg-[#F7F7F4] flex items-center justify-between">
+              <div>
+                <h3 className="text-[16px] font-bold text-[var(--text)]">Details & Audit Inspector</h3>
+                <div className="text-[11px] text-[var(--text-muted)]">
+                  {activeNote.clientName} ({activeNote.clientId}) · Visit {activeNote.visitDate}
+                </div>
+              </div>
+              <button type="button" onClick={() => setShowDetailsDrawer(false)} className="text-stone-500 hover:text-stone-800">✕</button>
+            </div>
+
+            {/* Drawer Tabs */}
+            <div className="flex border-b border-[var(--border)] px-4 bg-white text-[12px] font-semibold">
+              <button
+                type="button"
+                onClick={() => setDetailsDrawerTab('rules')}
+                className={`py-2.5 px-3 border-b-2 transition ${
+                  detailsDrawerTab === 'rules' ? 'border-[var(--green-700)] text-[var(--green-700)]' : 'border-transparent text-stone-500'
+                }`}
+              >
+                Rules triggered ({activeNote.flags.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setDetailsDrawerTab('context')}
+                className={`py-2.5 px-3 border-b-2 transition ${
+                  detailsDrawerTab === 'context' ? 'border-[var(--green-700)] text-[var(--green-700)]' : 'border-transparent text-stone-500'
+                }`}
+              >
+                Client context
+              </button>
+              <button
+                type="button"
+                onClick={() => setDetailsDrawerTab('history')}
+                className={`py-2.5 px-3 border-b-2 transition ${
+                  detailsDrawerTab === 'history' ? 'border-[var(--green-700)] text-[var(--green-700)]' : 'border-transparent text-stone-500'
+                }`}
+              >
+                Version history
+              </button>
+              <button
+                type="button"
+                onClick={() => setDetailsDrawerTab('audit')}
+                className={`py-2.5 px-3 border-b-2 transition ${
+                  detailsDrawerTab === 'audit' ? 'border-[var(--green-700)] text-[var(--green-700)]' : 'border-transparent text-stone-500'
+                }`}
+              >
+                Audit log
               </button>
             </div>
 
-            {showProgramSettings && (
-              <div className="pt-2 border-t border-[var(--border)] space-y-3 animate-fadeIn">
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                  {Object.entries(programRequirements).map(([prog, req]) => (
-                    <div key={prog} className="p-3 bg-[var(--bg)] border border-[var(--border)] rounded-[8px] flex items-center justify-between">
-                      <span className="font-semibold text-[14px] text-[var(--text)]">{prog}</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setProgramRequirements({ ...programRequirements, [prog]: !req });
-                          showToast(`${prog} updated to ${!req ? 'Mandatory' : 'Optional'}`);
-                        }}
-                        className={`px-2 py-0.5 rounded text-[11px] font-bold ${req ? 'bg-[var(--green-700)] text-white' : 'bg-stone-300 text-stone-700'
-                          }`}
-                      >
-                        {req ? 'Mandatory' : 'Optional'}
-                      </button>
+            {/* Drawer Body */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-4 text-[12px]">
+              {detailsDrawerTab === 'rules' && (
+                <div className="space-y-3">
+                  {activeNote.flags.map((f, i) => (
+                    <div key={i} className="p-3 bg-[#F7F7F4] border border-[var(--border)] rounded-[8px] space-y-1">
+                      <div className="font-bold text-[var(--text)]">{f.ruleName}</div>
+                      <div className="text-stone-600">Trigger: &ldquo;{f.phrase}&rdquo;</div>
+                      <div className="text-[11px] text-stone-500">{f.plainWhy}</div>
                     </div>
                   ))}
                 </div>
-
-                {/* Audio Policy Setting */}
-                <div className="p-3 bg-[var(--bg)] border border-[var(--border)] rounded-[8px] flex items-center justify-between">
-                  <div>
-                    <span className="font-semibold text-[13px] text-[var(--text)] block">Audio Retention Policy</span>
-                    <span className="text-[12px] text-[var(--text-muted)]">Default: 90 days retention for audit defense.</span>
-                  </div>
-                  <label className="flex items-center gap-2 text-[12px] cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={deleteAudioAfterApproval}
-                      onChange={() => setDeleteAudioAfterApproval(!deleteAudioAfterApproval)}
-                      className="h-4 w-4 rounded text-[var(--green-700)] focus:ring-[var(--green-700)]"
-                    />
-                    <span>Delete audio immediately after approval</span>
-                  </label>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Rules Table */}
-          <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-            <table className="w-full text-left border-collapse">
-              <thead className="bg-[var(--bg)] border-b border-[var(--border)] text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--text-muted)]">
-                <tr>
-                  <th className="py-3 px-4">Rule Name</th>
-                  <th className="py-3 px-4">Source & Regulation</th>
-                  <th className="py-3 px-4">Applies To</th>
-                  <th className="py-3 px-4">Severity</th>
-                  <th className="py-3 px-4">Example (Bad → Good)</th>
-                  <th className="py-3 px-4 text-center">Active</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--border)] text-[12px]">
-                {rules.map((rule) => (
-                  <tr key={rule.id} className="hover:bg-[#F0F2ED]/60 transition">
-                    <td className="py-3 px-4">
-                      <div className="font-semibold text-[14px] text-[var(--text)]">{rule.name}</div>
-                      <div className="text-[12px] text-[var(--text-muted)]">{rule.description}</div>
-                    </td>
-                    <td className="py-3 px-4 font-normal text-[var(--text)]">{rule.source}</td>
-                    <td className="py-3 px-4">
-                      <div className="flex gap-1 flex-wrap">
-                        {rule.appliesTo.map((p) => (
-                          <span key={p} className="px-1.5 py-0.2 rounded bg-[var(--bg)] border border-[var(--border)] text-[11px]">
-                            {p}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span
-                        className={`px-2 py-0.5 rounded font-semibold text-[11px] ${rule.severity === 'High' ? 'bg-red-100 text-red-900' : 'bg-amber-100 text-amber-900'
-                          }`}
-                      >
-                        {rule.severity}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 max-w-xs">
-                      <div className="text-red-900 line-through truncate">{rule.exampleBad}</div>
-                      <div className="text-emerald-900 font-medium truncate">{rule.exampleGood}</div>
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <input
-                        type="checkbox"
-                        checked={rule.isActive}
-                        onChange={() => {
-                          setRules(rules.map((r) => (r.id === rule.id ? { ...r, isActive: !r.isActive } : r)));
-                          showToast(`Rule updated`);
-                        }}
-                        className="h-4 w-4 rounded text-[var(--green-700)] focus:ring-[var(--green-700)]"
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 6. COLLAPSIBLE "DETAILS" DRAWER (4 TABS) */}
-      {/* ========================================================================= */}
-      {showDetailsDrawer && (
-        <div
-          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex justify-end animate-fadeIn"
-          onClick={() => setShowDetailsDrawer(false)}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Note Details Drawer"
-            className="w-full max-w-md bg-[var(--card)] h-full overflow-y-auto shadow-2xl flex flex-col animate-slideInRight"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Drawer Header */}
-            <div className="p-4 border-b border-[var(--border)] flex items-center justify-between bg-[var(--bg)]">
-              <div>
-                <h3 className="text-[16px] font-bold text-[var(--text)]">Note Details</h3>
-                <span className="text-[12px] text-[var(--text-muted)]">
-                  {deIdentify(currentNote.clientName)} · {currentNote.visitDate}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowDetailsDrawer(false)}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)]"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* 4 Tabs */}
-            <div className="grid grid-cols-4 border-b border-[var(--border)] bg-[var(--card)] text-[12px] font-semibold text-center">
-              {[
-                { id: 'summary', label: 'Summary' },
-                { id: 'rules', label: 'Rules' },
-                { id: 'client', label: 'Client' },
-                { id: 'history', label: 'History' },
-              ].map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setDetailsTab(t.id as typeof detailsTab)}
-                  className={`py-2.5 transition border-b-2 ${detailsTab === t.id
-                      ? 'border-[var(--green-700)] text-[var(--green-700)]'
-                      : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-                    }`}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Tab Contents */}
-            <div className="p-4 flex-1 overflow-y-auto space-y-4 text-[12px]">
-              {detailsTab === 'summary' && (
-                <div className="space-y-3">
-                  <div className="p-3 bg-[var(--bg)] rounded-[8px] border border-[var(--border)] space-y-1">
-                    <span className="font-semibold text-[13px] block">Checklist for {currentNote.program}:</span>
-                    <div className="space-y-1 text-stone-700">
-                      <div>✓ Verified caregiver identity & GPS clock-in</div>
-                      <div>✓ Authorized care plan tasks documented</div>
-                      <div>{currentNote.flags.length === 0 ? '✓' : '⚠️'} Objective non-judgmental wording</div>
-                    </div>
-                  </div>
-                </div>
               )}
 
-              {detailsTab === 'rules' && (
-                <div className="space-y-2">
-                  <span className="font-semibold text-[13px] block">Triggered Rules on this Note:</span>
-                  {currentNote.flags.length === 0 ? (
-                    <p className="text-emerald-800">No rule violations detected.</p>
-                  ) : (
-                    currentNote.flags.map((f, i) => (
-                      <div key={i} className="p-2.5 bg-[var(--bg)] rounded border border-[var(--border)] space-y-1">
-                        <span className="font-bold text-[var(--text)] block">{f.ruleName}</span>
-                        <p className="text-[12px] text-[var(--text-muted)]">{f.plainWhy}</p>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-
-              {detailsTab === 'client' && (
+              {detailsDrawerTab === 'context' && (
                 <div className="space-y-3">
-                  <span className="font-semibold text-[13px] block">Client History & Care Plan:</span>
-                  <div className="p-2.5 bg-[var(--bg)] rounded border border-[var(--border)]">
-                    Authorized: {currentNote.clientContext.authorizedHours}
+                  <div>
+                    <span className="font-bold text-[var(--text)]">Authorized Hours:</span>
+                    <div className="text-stone-600">{activeNote.clientContext.authorizedHours}</div>
                   </div>
                   <div>
-                    <span className="text-[11px] font-semibold text-[var(--text-muted)] uppercase block mb-1">
-                      Last 3 Submitted Notes (Check for Repeated Phrases):
-                    </span>
-                    <div className="space-y-1.5 text-stone-700">
-                      {currentNote.clientContext.lastThreeNotes.map((n, i) => (
-                        <div key={i} className="p-2 bg-[var(--bg)] rounded border border-[var(--border)]">
+                    <span className="font-bold text-[var(--text)]">Care Plan Goals:</span>
+                    <ul className="list-disc pl-4 text-stone-600 space-y-1 mt-1">
+                      {activeNote.clientContext.carePlanGoals.map((g, i) => (
+                        <li key={i}>{g}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <span className="font-bold text-[var(--text)]">Last 3 Visit Notes:</span>
+                    <div className="space-y-1.5 mt-1">
+                      {activeNote.clientContext.lastThreeNotes.map((n, i) => (
+                        <div key={i} className="p-2 bg-[#F7F7F4] rounded border border-[var(--border)] text-[11px] text-stone-700">
                           {n}
                         </div>
                       ))}
@@ -2127,122 +2169,197 @@ export const AuditPage: React.FC = () => {
                 </div>
               )}
 
-              {detailsTab === 'history' && (
-                <div className="space-y-2">
-                  <span className="font-semibold text-[13px] block">Version History & Audit Log:</span>
-                  <div className="space-y-2 border-l-2 border-[var(--green-700)] pl-3">
-                    {currentNote.timeline.map((item, idx) => (
-                      <div key={idx} className="space-y-0.5">
-                        <span className="font-semibold text-[var(--text)] block">{item.title}</span>
-                        <span className="text-[11px] text-[var(--text-muted)] block">
-                          {item.actor} · {item.time}
-                        </span>
-                      </div>
-                    ))}
+              {detailsDrawerTab === 'history' && (
+                <div className="space-y-3">
+                  <div className="p-3 bg-white border border-[var(--border)] rounded-[8px] space-y-1">
+                    <div className="flex justify-between font-bold text-[var(--text)]">
+                      <span>v1.0 Original Submission</span>
+                      <span className="text-[10px] text-stone-400">11:35 AM</span>
+                    </div>
+                    <p className="text-stone-600 italic text-[11px]">&ldquo;{activeNote.originalText}&rdquo;</p>
+                  </div>
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-[8px] space-y-1">
+                    <div className="flex justify-between font-bold text-emerald-950">
+                      <span>v2.0 AI Coach Refined Draft</span>
+                      <span className="text-[10px] text-emerald-700">11:36 AM</span>
+                    </div>
+                    <p className="text-emerald-900 text-[11px]">{generatedRefinedNote || 'Pending resolution'}</p>
                   </div>
                 </div>
               )}
+
+              {detailsDrawerTab === 'audit' && (
+                <div className="space-y-2">
+                  {activeNote.timeline.map((evt, i) => (
+                    <div key={i} className="p-2.5 bg-[#F7F7F4] rounded border border-[var(--border)] text-[11px]">
+                      <div className="flex justify-between text-stone-500">
+                        <span>{evt.actor}</span>
+                        <span>{evt.time}</span>
+                      </div>
+                      <div className="font-semibold text-[var(--text)] mt-0.5">{evt.title}</div>
+                      {evt.note && <div className="text-stone-500 mt-0.5">{evt.note}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-[var(--border)] bg-[#F7F7F4] flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowDetailsDrawer(false)}
+                className="min-h-[30px] px-4 rounded-[6px] bg-[var(--green-700)] text-white text-[12px] font-semibold hover:bg-[var(--green-900)]"
+              >
+                Done
+              </button>
             </div>
           </div>
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* 7. ONE MERGED ASSISTANT: "LiliSare Assistant" */}
+      {/* 8. INCIDENT CREATION MODAL                                                */}
       {/* ========================================================================= */}
-      <div className="fixed bottom-6 right-6 z-50">
-        <button
-          type="button"
-          onClick={() => setShowAssistant(!showAssistant)}
-          className="h-12 px-4 rounded-full bg-[var(--green-700)] text-white font-semibold text-[14px] shadow-xl hover:bg-[var(--green-900)] transition flex items-center gap-2 border-2 border-white focus:outline-none focus:ring-4 focus:ring-[var(--green-700)]/40"
-        >
-          <span className="text-lg">💬</span>
-          <span>LiliSare Assistant</span>
-        </button>
-
-        {showAssistant && (
-          <div className="absolute right-0 bottom-16 w-84 sm:w-96 bg-[var(--card)] border border-[var(--border)] rounded-[12px] shadow-2xl p-4 space-y-3 animate-slideInRight text-[12px] flex flex-col h-[520px]">
-            {/* Header with Context Chip */}
-            <div className="border-b border-[var(--border)] pb-2 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-[var(--green-700)] animate-pulse" />
-                  <span className="font-bold text-[14px] text-[var(--text)]">LiliSare Assistant</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setAssistantMessages([])}
-                    className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text)]"
-                  >
-                    Clear
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowAssistant(false)}
-                    className="text-[var(--text-muted)] hover:text-[var(--text)]"
-                  >
-                    ✕
-                  </button>
+      {showIncidentModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-2xs animate-fade-in">
+          <div className="bg-white rounded-[12px] border border-[var(--border)] max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
+              <div>
+                <h3 className="text-[16px] font-bold text-rose-900 flex items-center gap-1.5">
+                  <span>🚨</span>
+                  <span>Create Medicaid Critical Incident Case</span>
+                </h3>
+                <div className="text-[11px] text-[var(--text-muted)]">
+                  State 24-Hour Reporting Standard · Client: {activeNote.clientName}
                 </div>
               </div>
+              <button type="button" onClick={() => setShowIncidentModal(false)}>✕</button>
+            </div>
 
-              {/* Context Chip */}
-              <div className="p-1.5 bg-[var(--green-100)] rounded text-[11px] text-[var(--green-900)] font-medium truncate">
-                Discussing: {deIdentify(currentNote.caregiverName)} · {deIdentify(currentNote.clientName)} · {currentNote.visitDate}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                showToast(`Critical incident report logged for ${activeNote.clientName}. Routed to Compliance.`);
+                setShowIncidentModal(false);
+              }}
+              className="space-y-3 text-[12px]"
+            >
+              <div>
+                <label className="block font-semibold text-[var(--text)] mb-1">Incident Category</label>
+                <select
+                  value={incidentSeverity}
+                  onChange={(e) => setIncidentSeverity(e.target.value)}
+                  className="w-full p-2 bg-[#F7F7F4] border border-[var(--border)] rounded"
+                >
+                  <option>Critical - Physical Force / Non-Consensual Care</option>
+                  <option>Client Fall Resulting in Injury</option>
+                  <option>Medication Administration Error</option>
+                </select>
               </div>
+
+              <div>
+                <label className="block font-semibold text-[var(--text)] mb-1">Summary Description</label>
+                <textarea
+                  rows={3}
+                  required
+                  defaultValue={activeNote.originalText}
+                  className="w-full p-2 bg-[#F7F7F4] border border-[var(--border)] rounded font-mono text-[11px]"
+                />
+              </div>
+
+              <div className="p-2.5 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-900">
+                Notice: Submitting logs an immutable HIPAA audit event and alerts the Supervising RN.
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowIncidentModal(false)}
+                  className="min-h-[32px] px-3.5 rounded border border-[var(--border)]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="min-h-[32px] px-4 rounded bg-rose-700 text-white font-bold hover:bg-rose-800"
+                >
+                  Submit Incident to HCPF
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 9. FLOATING LILISARE ASSISTANT CHAT                                       */}
+      {/* ========================================================================= */}
+      <div className="fixed bottom-6 right-6 z-40">
+        {!showAssistant ? (
+          <button
+            type="button"
+            onClick={() => setShowAssistant(true)}
+            className="min-h-[44px] px-4 rounded-full bg-[var(--green-900)] text-white shadow-xl hover:bg-[var(--green-700)] transition flex items-center gap-2 font-semibold text-[13px] border border-white/20"
+          >
+            <span>💬</span>
+            <span>LiliSare Assistant</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          </button>
+        ) : (
+          <div className="bg-[var(--card)] border border-[var(--border)] rounded-[14px] shadow-2xl w-[360px] h-[480px] flex flex-col overflow-hidden animate-slideUp">
+            {/* Chat Header */}
+            <div className="p-3 bg-[var(--green-900)] text-white flex items-center justify-between">
+              <div>
+                <div className="font-bold text-[13px]">LiliSare Assistant</div>
+                <div className="text-[10px] text-emerald-300">
+                  Scoped: {activeNote.clientName} · Visit {activeNote.visitDate}
+                </div>
+              </div>
+              <button type="button" onClick={() => setShowAssistant(false)} className="text-white/70 hover:text-white">✕</button>
             </div>
 
             {/* Chat Messages */}
-            <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
+            <div className="flex-1 overflow-y-auto p-3 space-y-2 text-[12px]">
               {assistantMessages.map((m, idx) => (
                 <div
                   key={idx}
-                  className={`p-2.5 rounded-[8px] leading-relaxed ${m.sender === 'user'
+                  className={`p-2.5 rounded-[8px] leading-relaxed ${
+                    m.sender === 'user'
                       ? 'bg-[var(--green-700)] text-white ml-6 text-right'
-                      : 'bg-[var(--bg)] border border-[var(--border)] text-[var(--text)] mr-4 space-y-1.5'
-                    }`}
+                      : 'bg-[#F7F7F4] border border-[var(--border)] text-[var(--text)] mr-4 space-y-1.5'
+                  }`}
                 >
                   <div>{m.text}</div>
-                  {m.source && (
-                    <div className="text-[10px] text-[var(--text-muted)] italic">
-                      Source: {m.source}
-                    </div>
-                  )}
+                  {m.source && <div className="text-[10px] text-stone-400 font-mono">Source: {m.source}</div>}
                   {m.actionButton && (
                     <button
                       type="button"
                       onClick={() => handleAssistantAction(m.actionButton!.actionId)}
-                      className="mt-1 px-3 py-1 rounded bg-[var(--green-700)] text-white font-semibold text-[11px] block hover:bg-[var(--green-900)] shadow-xs"
+                      className="mt-1 px-2.5 py-1 rounded bg-[var(--green-700)] text-white font-semibold text-[11px] block hover:bg-[var(--green-900)]"
                     >
-                      [{m.actionButton.label}]
+                      {m.actionButton.label}
                     </button>
                   )}
                 </div>
               ))}
             </div>
 
-            {/* 4 Starting Prompt Chips */}
-            <div className="flex gap-1.5 overflow-x-auto pb-1 pt-1 border-t border-[var(--border)]">
-              {[
-                'Why was this flagged?',
-                "Summarize this client's week",
-                'Find similar notes',
-                'Draft a message to the caregiver',
-              ].map((p) => (
+            {/* Quick Prompts */}
+            <div className="p-2 border-t border-[var(--border)] bg-[#F7F7F4] flex gap-1 overflow-x-auto text-[11px]">
+              {['Why is this flagged?', 'Refine note', 'Check incident rules'].map((p) => (
                 <button
                   key={p}
                   type="button"
                   onClick={() => sendAssistantMessage(p)}
-                  className="px-2 py-1 rounded bg-[var(--bg)] border border-[var(--border)] text-[11px] text-[var(--text)] whitespace-nowrap hover:bg-[#EEF0EB]"
+                  className="px-2 py-0.5 rounded bg-white border border-[var(--border)] text-stone-700 whitespace-nowrap hover:bg-stone-100"
                 >
                   {p}
                 </button>
               ))}
             </div>
 
-            {/* Input Bar */}
-            <div className="flex items-center gap-1.5 pt-1">
+            {/* Chat Input */}
+            <div className="p-2 bg-white border-t border-[var(--border)] flex items-center gap-1.5">
               <input
                 type="text"
                 value={assistantInput}
@@ -2252,62 +2369,45 @@ export const AuditPage: React.FC = () => {
                     sendAssistantMessage(assistantInput.trim());
                   }
                 }}
-                placeholder="Ask about this note or rule…"
-                className="flex-1 h-[34px] px-3 bg-[var(--card)] border border-[var(--border)] rounded-[6px] text-[12px] focus:outline-none focus:ring-1 focus:ring-[var(--green-700)]"
+                placeholder="Ask about note, rules, or action..."
+                className="flex-1 h-[32px] px-2.5 bg-[#F7F7F4] border border-[var(--border)] rounded text-[12px] focus:outline-none"
               />
-              <button
-                type="button"
-                onClick={() => {
-                  sendAssistantMessage('Read the next urgent note');
-                }}
-                className="h-[34px] px-2 bg-[var(--bg)] border border-[var(--border)] rounded-[6px] text-[12px]"
-                title="Speak voice command"
-              >
-                🎙️
-              </button>
               <button
                 type="button"
                 onClick={() => {
                   if (assistantInput.trim()) sendAssistantMessage(assistantInput.trim());
                 }}
-                className="h-[34px] px-3 bg-[var(--green-700)] text-white font-semibold rounded-[6px] text-[12px]"
+                className="h-[32px] px-3 bg-[var(--green-700)] text-white font-bold rounded text-[12px]"
               >
                 Send
               </button>
-            </div>
-
-            <div className="text-[10px] text-[var(--text-muted)] text-center">
-              Chat content is logged and protected under HIPAA compliance.
             </div>
           </div>
         )}
       </div>
 
       {/* ========================================================================= */}
-      {/* 8. ASSISTANT ACTION CONFIRMATION MODAL */}
+      {/* 10. ASSISTANT ACTION CONFIRMATION MODAL                                   */}
       {/* ========================================================================= */}
       {pendingConfirmAction && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-6 max-w-md w-full shadow-2xl space-y-3">
-            <h3 className="text-[16px] font-bold text-[var(--text)]">Confirm Action</h3>
-            <p className="text-[13px] text-stone-700 leading-relaxed">
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-2xs flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white border border-[var(--border)] rounded-[12px] p-5 max-w-md w-full shadow-2xl space-y-3">
+            <h3 className="text-[16px] font-bold text-[var(--text)]">{pendingConfirmAction.label}</h3>
+            <p className="text-[12px] text-[var(--text-muted)] leading-relaxed">
               {pendingConfirmAction.description}
             </p>
-            <div className="flex justify-end gap-2 pt-3 border-t border-[var(--border)]">
+            <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setPendingConfirmAction(null)}
-                className="min-h-[36px] px-3.5 rounded-[8px] border border-[var(--border)] text-[14px]"
+                className="min-h-[30px] px-3.5 rounded border border-[var(--border)] text-[12px] font-semibold"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  pendingConfirmAction.onConfirm();
-                  setPendingConfirmAction(null);
-                }}
-                className="min-h-[36px] px-5 rounded-[8px] bg-[var(--green-700)] text-white text-[14px] font-semibold hover:bg-[var(--green-900)]"
+                onClick={pendingConfirmAction.onConfirm}
+                className="min-h-[30px] px-4 rounded bg-[var(--green-700)] text-white text-[12px] font-semibold hover:bg-[var(--green-900)]"
               >
                 Confirm
               </button>
@@ -2316,176 +2416,6 @@ export const AuditPage: React.FC = () => {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* 9. 3-STEP HELP GUIDE MODAL */}
-      {/* ========================================================================= */}
-      {showHelpGuide && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-6 max-w-lg w-full shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
-              <h3 className="text-[16px] font-bold text-[var(--text)]">
-                3-Step Guide: {activeTab === 'review' ? 'Reviewing Notes' : activeTab === 'new-note' ? 'Creating Notes' : 'Quality & Rules'}
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowHelpGuide(false)}
-                className="text-[var(--text-muted)] hover:text-[var(--text)]"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="space-y-3 text-[13px] text-stone-800">
-              {activeTab === 'review' && (
-                <>
-                  <div className="flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-full bg-[var(--green-100)] text-[var(--green-700)] font-bold flex items-center justify-center shrink-0">1</span>
-                    <div>
-                      <b>Read:</b> Review what the caregiver submitted. Tap highlighted phrases to see plain-language explanations.
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-full bg-[var(--green-100)] text-[var(--green-700)] font-bold flex items-center justify-center shrink-0">2</span>
-                    <div>
-                      <b>Fix:</b> Look at the suggested version with amber blanks. Expand the questions to ask the caregiver for missing details.
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-full bg-[var(--green-100)] text-[var(--green-700)] font-bold flex items-center justify-center shrink-0">3</span>
-                    <div>
-                      <b>Decide:</b> Tap "Send to caregiver" to send questions, or "Approve note" once all facts are verified.
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {activeTab === 'new-note' && (
-                <>
-                  <div className="flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-full bg-[var(--green-100)] text-[var(--green-700)] font-bold flex items-center justify-center shrink-0">1</span>
-                    <div><b>Pick client and visit:</b> Choose from your verified caseload.</div>
-                  </div>
-                  <div className="flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-full bg-[var(--green-100)] text-[var(--green-700)] font-bold flex items-center justify-center shrink-0">2</span>
-                    <div><b>Provide notes:</b> Speak via mic, upload voice recording, or paste rough notes.</div>
-                  </div>
-                  <div className="flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-full bg-[var(--green-100)] text-[var(--green-700)] font-bold flex items-center justify-center shrink-0">3</span>
-                    <div><b>Format and submit:</b> AI organizes observations into tasks, client response, and follow-up.</div>
-                  </div>
-                </>
-              )}
-
-              {(activeTab === 'quality' || activeTab === 'rules') && (
-                <>
-                  <div className="flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-full bg-[var(--green-100)] text-[var(--green-700)] font-bold flex items-center justify-center shrink-0">1</span>
-                    <div><b>Review pass rate:</b> Track how notes comply with state Medicaid rules on the first pass.</div>
-                  </div>
-                  <div className="flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-full bg-[var(--green-100)] text-[var(--green-700)] font-bold flex items-center justify-center shrink-0">2</span>
-                    <div><b>Identify coaching needs:</b> Assign 15-minute refresher courses to caregivers with recurring flags.</div>
-                  </div>
-                  <div className="flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-full bg-[var(--green-100)] text-[var(--green-700)] font-bold flex items-center justify-center shrink-0">3</span>
-                    <div><b>Manage rules:</b> Update or toggle rules anytime state mandates evolve.</div>
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div className="flex justify-end pt-2 border-t border-[var(--border)]">
-              <button
-                type="button"
-                onClick={() => setShowHelpGuide(false)}
-                className="min-h-[36px] px-4 rounded-[8px] bg-[var(--green-700)] text-white text-[13px] font-semibold"
-              >
-                Got it
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 10. SESSION TIMEOUT AUTO-LOCK DEMO MODAL */}
-      {/* ========================================================================= */}
-      {showSessionTimeoutModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-6 max-w-sm w-full shadow-2xl text-center space-y-4">
-            <span className="text-3xl block">🔒</span>
-            <div>
-              <h3 className="text-[16px] font-bold text-[var(--text)]">Session Auto-Locked</h3>
-              <p className="text-[12px] text-[var(--text-muted)] mt-1">
-                For HIPAA security, screen auto-locks after inactivity to protect client PHI.
-              </p>
-            </div>
-            <input
-              type="password"
-              defaultValue="••••"
-              className="w-full text-center h-[36px] border border-[var(--border)] rounded-[8px] tracking-widest text-[16px]"
-            />
-            <button
-              type="button"
-              onClick={() => {
-                setShowSessionTimeoutModal(false);
-                showToast('Session unlocked');
-              }}
-              className="w-full min-h-[36px] rounded-[8px] bg-[var(--green-700)] text-white font-semibold text-[14px]"
-            >
-              Resume Session
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 11. STATE CRITICAL INCIDENT REPORT MODAL */}
-      {/* ========================================================================= */}
-      {showIncidentModal && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-[var(--card)] border-2 border-[var(--red)] rounded-[12px] p-6 max-w-lg w-full shadow-2xl space-y-4">
-            <div className="flex items-center gap-3 pb-2 border-b border-[var(--border)] text-[var(--red)]">
-              <span className="text-2xl">🚨</span>
-              <div>
-                <h3 className="text-[16px] font-bold">State Critical Incident Protocol</h3>
-                <span className="text-[12px] text-red-900">Colorado Medicaid HCPF Gate</span>
-              </div>
-            </div>
-
-            <p className="text-[13px] text-[var(--text)] leading-relaxed">
-              You are escalating documentation containing potential physical force or coercion indicators.
-              Neutral clinical rewording must <b>NEVER</b> obscure a potential safety event.
-            </p>
-
-            <div className="p-3 bg-red-50 border border-red-200 rounded-[8px] space-y-1.5 text-[12px] text-red-950">
-              <div>✓ Incident file created: <b>INC-2026-1178</b></div>
-              <div>✓ Notifying Clinical Supervisor: <b>Dana Whitfield, RN</b></div>
-              <div>✓ Pre-populated Colorado HCPF Critical Incident draft</div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2 border-t border-[var(--border)]">
-              <button
-                type="button"
-                onClick={() => setShowIncidentModal(false)}
-                className="min-h-[36px] px-3.5 rounded-[8px] border border-[var(--border)] text-[14px]"
-              >
-                Close
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowIncidentModal(false);
-                  showToast('Incident report submitted to state coordinator');
-                }}
-                className="min-h-[36px] px-4 rounded-[8px] bg-[var(--red)] text-white text-[14px] font-semibold"
-              >
-                Submit Incident Report
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
