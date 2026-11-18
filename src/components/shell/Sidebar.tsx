@@ -76,9 +76,8 @@ export const Sidebar: React.FC = () => {
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {};
     NAV.forEach((group) => {
-      // Auto-expand group if it contains the initial active page
-      const containsActive = group.items.some((item) => item.id === page);
-      initial[group.id] = containsActive || group.id === 'intake-menu';
+      // Auto-expand all groups by default so items like Training, Caregivers, Screening are always visible
+      initial[group.id] = true;
     });
     return initial;
   });
@@ -194,9 +193,8 @@ export const Sidebar: React.FC = () => {
       <aside
         style={{ backgroundColor: 'var(--green-900, #1b381e)' }}
         aria-label="Main navigation"
-        className={`fixed inset-y-0 left-0 z-40 flex flex-col justify-between text-white transition-all duration-200 ease-in-out lg:sticky lg:top-0 lg:h-screen lg:shrink-0 ${
-          isCollapsed ? 'w-20 p-3' : 'w-64 p-3.5'
-        } ${isMobileNavOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
+        className={`fixed inset-y-0 left-0 z-40 flex flex-col justify-between text-white transition-all duration-200 ease-in-out lg:sticky lg:top-0 lg:h-screen lg:shrink-0 ${isCollapsed ? 'w-20 p-3' : 'w-64 p-3.5'
+          } ${isMobileNavOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
       >
         {/* TOP BRAND HEADER & COLLAPSE TOGGLE */}
         <div className="flex items-center justify-between gap-2 mb-4 shrink-0">
@@ -259,7 +257,7 @@ export const Sidebar: React.FC = () => {
         </div>
 
         {/* MIDDLE SCROLLABLE NAVIGATION LIST */}
-        <nav className="flex-1 overflow-y-auto space-y-1.5 pr-0.5 custom-scrollbar">
+        <nav className="flex-1 overflow-y-auto space-y-1.5 pr-0.5 sidebar-scroll">
           {visibleNavGroups.map((group) => {
             // Standalone Direct Link (e.g. Today or Portal)
             if (!group.isExpandable && group.directId) {
@@ -273,11 +271,10 @@ export const Sidebar: React.FC = () => {
                     setIsMobileNavOpen(false);
                   }}
                   title={isCollapsed ? group.name : undefined}
-                  className={`w-full flex items-center rounded-xl px-3 py-2.5 text-sm font-medium transition group ${
-                    isActive
-                      ? 'bg-white/20 text-white font-semibold shadow-xs'
-                      : 'text-white/85 hover:text-white hover:bg-white/10'
-                  } ${isCollapsed ? 'justify-center px-0' : 'justify-between'}`}
+                  className={`w-full flex items-center rounded-xl px-3 py-2.5 text-sm font-medium transition group ${isActive
+                    ? 'bg-white/20 text-white font-semibold shadow-xs'
+                    : 'text-white/85 hover:text-white hover:bg-white/10'
+                    } ${isCollapsed ? 'justify-center px-0' : 'justify-between'}`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <span className={isActive ? 'text-white' : 'text-white/80 group-hover:text-white'}>
@@ -302,11 +299,10 @@ export const Sidebar: React.FC = () => {
                   onClick={() => toggleGroup(group.id)}
                   title={isCollapsed ? group.name : undefined}
                   aria-expanded={isExpanded}
-                  className={`w-full flex items-center rounded-xl px-3 py-2.5 text-sm font-medium transition group ${
-                    hasActiveChild && !isExpanded
-                      ? 'bg-white/15 text-white font-semibold'
-                      : 'text-white/85 hover:text-white hover:bg-white/10'
-                  } ${isCollapsed ? 'justify-center px-0' : 'justify-between'}`}
+                  className={`w-full flex items-center rounded-xl px-3 py-2.5 text-sm font-medium transition group ${hasActiveChild && !isExpanded
+                    ? 'bg-white/15 text-white font-semibold'
+                    : 'text-white/85 hover:text-white hover:bg-white/10'
+                    } ${isCollapsed ? 'justify-center px-0' : 'justify-between'}`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <span className={hasActiveChild ? 'text-white' : 'text-white/80 group-hover:text-white'}>
@@ -324,9 +320,8 @@ export const Sidebar: React.FC = () => {
                       )}
 
                       <svg
-                        className={`w-4 h-4 text-white/60 group-hover:text-white transition-transform duration-200 ${
-                          isExpanded ? 'transform rotate-180' : ''
-                        }`}
+                        className={`w-4 h-4 text-white/60 group-hover:text-white transition-transform duration-200 ${isExpanded ? 'transform rotate-180' : ''
+                          }`}
                         fill="none"
                         stroke="currentColor"
                         strokeWidth="2"
@@ -351,11 +346,10 @@ export const Sidebar: React.FC = () => {
                             navigate(subItem.id);
                             setIsMobileNavOpen(false);
                           }}
-                          className={`w-full flex items-center justify-between rounded-lg px-2.5 py-1.5 text-[13px] font-normal transition text-left ${
-                            isSubActive
-                              ? 'bg-white/20 text-white font-semibold shadow-xs'
-                              : 'text-white/80 hover:text-white hover:bg-white/10'
-                          }`}
+                          className={`w-full flex items-center justify-between rounded-lg px-2.5 py-1.5 text-[13px] font-normal transition text-left ${isSubActive
+                            ? 'bg-white/20 text-white font-semibold shadow-xs'
+                            : 'text-white/80 hover:text-white hover:bg-white/10'
+                            }`}
                         >
                           <span className="truncate">{subItem.label}</span>
                           {subItem.badge !== undefined && (
@@ -379,9 +373,8 @@ export const Sidebar: React.FC = () => {
             type="button"
             onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
             aria-expanded={isProfileMenuOpen}
-            className={`w-full flex items-center rounded-xl p-2 transition hover:bg-white/10 text-left ${
-              isCollapsed ? 'justify-center p-1.5' : 'justify-between gap-2.5'
-            }`}
+            className={`w-full flex items-center rounded-xl p-2 transition hover:bg-white/10 text-left ${isCollapsed ? 'justify-center p-1.5' : 'justify-between gap-2.5'
+              }`}
           >
             <div className="flex items-center gap-2.5 min-w-0">
               {/* Vibrant Emerald Avatar with Initial */}
@@ -403,9 +396,8 @@ export const Sidebar: React.FC = () => {
 
             {!isCollapsed && (
               <svg
-                className={`w-4 h-4 text-white/60 transition-transform duration-200 shrink-0 ${
-                  isProfileMenuOpen ? 'transform rotate-180' : ''
-                }`}
+                className={`w-4 h-4 text-white/60 transition-transform duration-200 shrink-0 ${isProfileMenuOpen ? 'transform rotate-180' : ''
+                  }`}
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"

@@ -49,7 +49,7 @@ export const CaregiverIntakePage: React.FC = () => {
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
 
   // Drawer & Modal States
-  const [activeTab, setActiveTab] = useState<'overview' | 'credentials' | 'comp' | 'comm' | 'activity'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'training' | 'credentials' | 'comp' | 'comm' | 'activity'>('overview');
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [addPreselectedStage, setAddPreselectedStage] = useState('New Application');
   const [isHireModalOpen, setIsHireModalOpen] = useState(false);
@@ -1008,6 +1008,7 @@ export const CaregiverIntakePage: React.FC = () => {
             <div className="flex gap-2 px-6 pt-3 border-b border-[var(--border)] overflow-x-auto">
               {[
                 { id: 'overview', label: 'Overview' },
+                { id: 'training', label: 'Training & LMS' },
                 { id: 'credentials', label: 'Experience & Credentials' },
                 { id: 'comp', label: 'Compensation & Packet' },
                 { id: 'comm', label: `Communication (${selectedApplicant.commLog?.length || 0})` },
@@ -1088,6 +1089,102 @@ export const CaregiverIntakePage: React.FC = () => {
                           {selectedApplicant.cbiStatus || 'Pending'}
                         </span>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* TRAINING & ACADEMY SUMMARY CARD */}
+                  <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-[var(--green-700)]"></span>
+                        <h3 className="text-[15px] font-semibold text-[var(--text)]">Training & Academy Readiness</h3>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedApplicant(null);
+                          navigate('training');
+                        }}
+                        className="text-[12px] font-semibold text-[var(--green-700)] hover:underline"
+                      >
+                        Open in Training →
+                      </button>
+                    </div>
+                    <div className="p-3 bg-[var(--bg)] rounded-[8px] border border-[var(--border)] flex items-center justify-between text-[13px]">
+                      <div>
+                        <div className="font-semibold text-[var(--text)]">
+                          {selectedApplicant.serviceClass === 'CNA'
+                            ? 'LS4000 CNA Clinical Curriculum'
+                            : 'LS3000 In-Home Care Foundations'}
+                        </div>
+                        <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                          {selectedApplicant.currentStep >= 5
+                            ? 'LearnWorlds course assigned · 60% progress · Skills validation pending'
+                            : 'Training path auto-assigned upon offer acceptance and onboarding handoff'}
+                        </div>
+                      </div>
+                      <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">
+                        {selectedApplicant.currentStep >= 5 ? 'In Training' : 'Pre-hire'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TRAINING & LMS TAB */}
+              {activeTab === 'training' && (
+                <div className="space-y-4">
+                  <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-4">
+                    <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+                      <div>
+                        <span className="text-[11px] font-semibold uppercase text-[var(--text-muted)] tracking-wider block">Assigned Path</span>
+                        <h4 className="text-[16px] font-bold text-[var(--text)]">
+                          {selectedApplicant.serviceClass === 'CNA'
+                            ? 'CNA Clinical Onboarding Path (LS4000)'
+                            : 'IHSS Attendant Care Foundations (LS3000)'}
+                        </h4>
+                      </div>
+                      <span className="text-[12px] font-bold text-[var(--green-700)] bg-[var(--green-100)] px-2.5 py-1 rounded-full">
+                        {selectedApplicant.currentStep >= 5 ? '60% Complete' : 'Enrolled (0%)'}
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-[12px] font-semibold text-[var(--text)]">Activation Gate Checks</div>
+                      <div className="grid grid-cols-2 gap-2 text-[12px]">
+                        <div className="p-2.5 bg-[#F7F7F4] rounded-[8px] border border-[var(--border)] flex items-center justify-between">
+                          <span>Orientation Course (LS1010)</span>
+                          <span className="text-emerald-700 font-bold">Done ✓</span>
+                        </div>
+                        <div className="p-2.5 bg-[#F7F7F4] rounded-[8px] border border-[var(--border)] flex items-center justify-between">
+                          <span>Foundations (LS3000)</span>
+                          <span className="text-blue-700 font-bold">In progress</span>
+                        </div>
+                        <div className="p-2.5 bg-[#F7F7F4] rounded-[8px] border border-[var(--border)] flex items-center justify-between">
+                          <span>Emergency Protocol Quiz</span>
+                          <span className="text-emerald-700 font-bold">Passed (85%)</span>
+                        </div>
+                        <div className="p-2.5 bg-[#F7F7F4] rounded-[8px] border border-[var(--border)] flex items-center justify-between">
+                          <span>RN Skills Lab Demonstration</span>
+                          <span className="text-amber-700 font-bold">Scheduled Nov 20</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 flex items-center justify-between">
+                      <div className="text-[12px] text-[var(--text-muted)]">
+                        LearnWorlds LMS API: Auto-enrolled upon candidate hire
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedApplicant(null);
+                          navigate('training');
+                        }}
+                        className="min-h-[32px] px-3.5 rounded-[6px] bg-[var(--green-700)] text-white text-[12px] font-semibold hover:bg-[var(--green-900)] transition"
+                      >
+                        View Full Training Record →
+                      </button>
                     </div>
                   </div>
                 </div>

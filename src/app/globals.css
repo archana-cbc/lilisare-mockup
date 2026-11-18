@@ -58,6 +58,16 @@ button {
   scrollbar-color: #CBD5E1 transparent;
 }
 
+/* Sidebar clean non-obtrusive scroll */
+.sidebar-scroll {
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.sidebar-scroll::-webkit-scrollbar {
+  display: none;
+}
+
 .kanban-scroll::-webkit-scrollbar {
   height: 6px;
 }
