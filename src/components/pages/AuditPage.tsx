@@ -1317,6 +1317,19 @@ export const AuditPage: React.FC = () => {
                         type="button"
                         onClick={() => {
                           setShowMoreActions(false);
+                          if (confirm(`Suggest training refresher "LS2040: Objective Note Writing (15 min)" to ${currentNote.caregiverName}?`)) {
+                            showToast(`Assigned "LS2040: Objective Note Writing" to ${currentNote.caregiverName}. Visible in Training module.`);
+                          }
+                        }}
+                        className="w-full text-left p-2 rounded hover:bg-[#F0F2ED] text-[#3E6B2B] font-semibold flex items-center gap-1.5"
+                      >
+                        <span>🎓</span>
+                        <span>Suggest training (15 min)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowMoreActions(false);
                           handleApproveNote(currentNote.id);
                           showToast('Approved keeping original text');
                         }}

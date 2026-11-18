@@ -463,10 +463,21 @@ export const OnboardingPage: React.FC = () => {
                               </span>
                             </td>
 
-                            <td className="py-3.5 px-4">
-                              <span className="font-semibold text-stone-800">
-                                {r.caregiverProgress >= 70 ? '100% LS3000' : 'In Progress (64%)'}
-                              </span>
+                            <td
+                              className="py-3.5 px-4"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate('training');
+                              }}
+                            >
+                              <div className="flex items-center gap-1.5 group">
+                                <span className="font-semibold text-stone-800 group-hover:text-[#3E6B2B] transition">
+                                  {r.caregiverProgress >= 70 ? '100% Complete' : 'In Progress (64%)'}
+                                </span>
+                                <span className="text-[10px] text-[#3E6B2B] font-bold group-hover:underline">
+                                  Record →
+                                </span>
+                              </div>
                             </td>
 
                             <td className="py-3.5 px-4">

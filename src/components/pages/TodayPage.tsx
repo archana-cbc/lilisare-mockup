@@ -262,7 +262,7 @@ export const TodayPage: React.FC = () => {
           <div className="flex items-center gap-2">
             <h2 className="font-extrabold text-base text-[#1c2a17]">Needs your attention</h2>
             <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-red-100 text-red-800">
-              6 priority items
+              7 priority items
             </span>
           </div>
           <button
@@ -276,6 +276,14 @@ export const TodayPage: React.FC = () => {
 
         <div className="divide-y divide-stone-100">
           {[
+            {
+              icon: <span className="text-base">🎓</span>,
+              text: '9 caregivers overdue on orientation & mandatory training',
+              pill: 'Overdue',
+              col: 'red',
+              action: 'Resolve in Training',
+              onClick: () => navigate('training'),
+            },
             {
               icon: <IconAlert />,
               text: '6 caregivers working without approval · payment at risk',

@@ -22,6 +22,7 @@ import { CompliancePage } from '@/components/pages/CompliancePage';
 import { AuditPage } from '@/components/pages/AuditPage';
 import { EmailsPage } from '@/components/pages/EmailsPage';
 import { ScreeningPage } from '@/components/pages/ScreeningPage';
+import { TrainingPage } from '@/components/pages/TrainingPage';
 import { BillingPage } from '@/components/pages/BillingPage';
 import { ProfitPage } from '@/components/pages/ProfitPage';
 import { RulesPage } from '@/components/pages/RulesPage';
@@ -83,6 +84,8 @@ function DashboardContent() {
         return <EmailsPage />;
       case 'screening':
         return <ScreeningPage />;
+      case 'training':
+        return <TrainingPage />;
       case 'billing':
         return <BillingPage />;
       case 'profit':

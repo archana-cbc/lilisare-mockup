@@ -8,6 +8,8 @@ import { useApp } from '@/context/AppContext';
 // =========================================================================
 export const CaregiverPortal: React.FC = () => {
   const { showToast } = useApp();
+  const [activeTab, setActiveTab] = useState<'shift' | 'training'>('shift');
+  const [lang, setLang] = useState<'en' | 'es'>('en');
   const [isClockedIn, setIsClockedIn] = useState(true);
   const [tasks, setTasks] = useState({
     hygiene: true,
@@ -68,148 +70,354 @@ export const CaregiverPortal: React.FC = () => {
                   <div className="text-[10px] text-emerald-300">Family Caregiver · IHSS</div>
                 </div>
               </div>
-              <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-emerald-400/30">
-                Online
-              </span>
+              {/* Language Toggle */}
+              <div className="bg-white/15 p-0.5 rounded-lg flex items-center text-[10px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => setLang('en')}
+                  className={`px-1.5 py-0.5 rounded ${lang === 'en' ? 'bg-emerald-500 text-white' : 'text-white/70'}`}
+                >
+                  EN
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLang('es')}
+                  className={`px-1.5 py-0.5 rounded ${lang === 'es' ? 'bg-emerald-500 text-white' : 'text-white/70'}`}
+                >
+                  ES
+                </button>
+              </div>
+            </div>
+
+            {/* Mobile View Switcher */}
+            <div className="grid grid-cols-2 gap-1 mt-3 bg-black/20 p-1 rounded-xl text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setActiveTab('shift')}
+                className={`py-1 rounded-lg transition text-center ${
+                  activeTab === 'shift' ? 'bg-emerald-600 text-white shadow-xs' : 'text-white/75 hover:text-white'
+                }`}
+              >
+                {lang === 'en' ? 'Today\'s Visit' : 'Visita de Hoy'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('training')}
+                className={`py-1 rounded-lg transition text-center ${
+                  activeTab === 'training' ? 'bg-emerald-600 text-white shadow-xs' : 'text-white/75 hover:text-white'
+                }`}
+              >
+                {lang === 'en' ? 'My Training' : 'Mis Cursos'}
+              </button>
             </div>
           </div>
 
           {/* Phone Scroll Area */}
           <div className="p-3.5 space-y-3.5 flex-1 overflow-y-auto custom-scrollbar text-xs">
-            
-            {/* Shift Card */}
-            <div className="bg-white border border-stone-200 rounded-2xl p-3.5 shadow-xs space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-xs text-stone-900">Current Visit</span>
-                <span className="bg-emerald-100 text-emerald-800 font-bold text-[10px] px-2 py-0.5 rounded-full">
-                  {isClockedIn ? 'In Progress' : 'Shift Ended'}
-                </span>
-              </div>
+            {activeTab === 'shift' ? (
+              <>
+                {/* Shift Card */}
+                <div className="bg-white border border-stone-200 rounded-2xl p-3.5 shadow-xs space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-stone-900">
+                      {lang === 'en' ? 'Current Visit' : 'Visita Actual'}
+                    </span>
+                    <span className="bg-emerald-100 text-emerald-800 font-bold text-[10px] px-2 py-0.5 rounded-full">
+                      {isClockedIn ? (lang === 'en' ? 'In Progress' : 'En Curso') : (lang === 'en' ? 'Shift Ended' : 'Turno Finalizado')}
+                    </span>
+                  </div>
 
-              <div>
-                <div className="font-bold text-sm text-stone-900">Marisol Vega</div>
-                <div className="text-[11px] text-stone-500">8:00 AM – 11:30 AM · Attendant Care</div>
-                <div className="text-[10px] text-emerald-700 font-medium flex items-center gap-1 mt-0.5">
-                  <span>📍 GPS Matched: 452 Elm St, Denver CO</span>
+                  <div>
+                    <div className="font-bold text-sm text-stone-900">Marisol Vega</div>
+                    <div className="text-[11px] text-stone-500">8:00 AM – 11:30 AM · Attendant Care</div>
+                    <div className="text-[10px] text-emerald-700 font-medium flex items-center gap-1 mt-0.5">
+                      <span>📍 GPS Matched: 452 Elm St, Denver CO</span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsClockedIn(!isClockedIn);
+                      showToast(isClockedIn ? 'EVV Clock-out verified with GPS.' : 'EVV Clock-in verified.');
+                    }}
+                    className={`w-full py-2.5 rounded-xl font-bold text-xs shadow-xs transition flex items-center justify-center gap-2 ${
+                      isClockedIn
+                        ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                        : 'bg-[#3E6B2B] hover:bg-[#335a23] text-white'
+                    }`}
+                  >
+                    <span>
+                      {isClockedIn
+                        ? (lang === 'en' ? '⏱️ Clock Out & Sign' : '⏱️ Salida y Firma')
+                        : (lang === 'en' ? '▶️ Clock In (EVV)' : '▶️ Iniciar Visita (EVV)')}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Care Tasks Checklist */}
+                <div className="bg-white border border-stone-200 rounded-2xl p-3.5 shadow-xs space-y-2">
+                  <div className="font-bold text-xs text-stone-900 flex items-center justify-between">
+                    <span>{lang === 'en' ? 'Care Plan Tasks' : 'Tareas del Plan de Cuidado'}</span>
+                    <span className="text-[10px] text-stone-400">3 of 4 done</span>
+                  </div>
+
+                  <div className="space-y-1.5 text-xs">
+                    <label className="flex items-center gap-2 p-1.5 bg-stone-50 rounded-lg cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={tasks.hygiene}
+                        onChange={() => toggleTask('hygiene')}
+                        className="rounded accent-[#3E6B2B]"
+                      />
+                      <span className={tasks.hygiene ? 'line-through text-stone-400' : 'text-stone-800'}>
+                        {lang === 'en' ? 'Assisted with morning hygiene & dressing' : 'Asistencia en higiene matutina y vestir'}
+                      </span>
+                    </label>
+
+                    <label className="flex items-center gap-2 p-1.5 bg-stone-50 rounded-lg cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={tasks.meds}
+                        onChange={() => toggleTask('meds')}
+                        className="rounded accent-[#3E6B2B]"
+                      />
+                      <span className={tasks.meds ? 'line-through text-stone-400' : 'text-stone-800'}>
+                        {lang === 'en' ? 'Blood pressure medication reminder (9:00 AM)' : 'Recordatorio medicamento presión (9:00 AM)'}
+                      </span>
+                    </label>
+
+                    <label className="flex items-center gap-2 p-1.5 bg-stone-50 rounded-lg cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={tasks.meal}
+                        onChange={() => toggleTask('meal')}
+                        className="rounded accent-[#3E6B2B]"
+                      />
+                      <span className={tasks.meal ? 'line-through text-stone-400' : 'text-stone-800'}>
+                        {lang === 'en' ? 'Midday meal preparation & hydration' : 'Preparación de almuerzo e hidratación'}
+                      </span>
+                    </label>
+
+                    <label className="flex items-center gap-2 p-1.5 bg-stone-50 rounded-lg cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={tasks.transfers}
+                        onChange={() => toggleTask('transfers')}
+                        className="rounded accent-[#3E6B2B]"
+                      />
+                      <span className={tasks.transfers ? 'line-through text-stone-400' : 'text-stone-800'}>
+                        {lang === 'en' ? 'Mobility assistance using rolling walker' : 'Apoyo en movilidad con andador'}
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Voice Dictate Care Note */}
+                <div className="bg-white border border-stone-200 rounded-2xl p-3.5 shadow-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-stone-900">
+                      {lang === 'en' ? 'Shift Visit Note' : 'Nota de la Visita'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleVoiceToggle}
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 transition ${
+                        isRecording ? 'bg-rose-500 text-white animate-pulse' : 'bg-emerald-100 text-emerald-800'
+                      }`}
+                    >
+                      <span>{isRecording ? (lang === 'en' ? '🔴 Listening...' : '🔴 Escuchando...') : (lang === 'en' ? '🎙️ Dictate' : '🎙️ Dictar')}</span>
+                    </button>
+                  </div>
+
+                  <textarea
+                    rows={3}
+                    value={noteText}
+                    onChange={(e) => setNoteText(e.target.value)}
+                    className="w-full p-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-800 focus:outline-none focus:ring-1 focus:ring-[#3E6B2B]"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => showToast(lang === 'en' ? 'Care note submitted for clinical review.' : 'Nota enviada para revisión clínica.')}
+                    className="w-full bg-stone-900 hover:bg-stone-800 text-white font-semibold py-2 rounded-xl text-xs transition"
+                  >
+                    {lang === 'en' ? 'Submit note to agency' : 'Enviar nota a LiliSare'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-3">
+                {/* Expiring credentials banner */}
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 flex items-start gap-2.5 shadow-xs">
+                  <span className="text-base leading-none">⚠️</span>
+                  <div className="flex-1">
+                    <div className="font-bold text-amber-900 text-xs">
+                      {lang === 'en' ? 'CPR certification expires in 28 days' : 'Certificación CPR vence en 28 días'}
+                    </div>
+                    <div className="text-[11px] text-amber-700 mt-0.5">
+                      {lang === 'en' ? 'Upload updated card or schedule renewal lab.' : 'Sube tu tarjeta actualizada o programa examen.'}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => showToast(lang === 'en' ? 'Opening renewal schedule...' : 'Abriendo calendario de renovación...')}
+                      className="mt-2 text-[10px] font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-2.5 py-1 rounded-lg border border-amber-300 transition"
+                    >
+                      {lang === 'en' ? 'Renew now →' : 'Renovar ahora →'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Assigned Path Progress */}
+                <div className="bg-white border border-stone-200 rounded-2xl p-3.5 shadow-xs space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md">
+                        {lang === 'en' ? 'Assigned Curriculum' : 'Plan de Aprendizaje'}
+                      </span>
+                      <h4 className="font-bold text-stone-900 text-xs mt-1">IHSS Attendant Path</h4>
+                    </div>
+                    <span className="text-xs font-bold text-emerald-700">60%</span>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between text-[10px] text-stone-500 mb-1">
+                      <span>{lang === 'en' ? '3 of 5 complete' : '3 de 5 completados'}</span>
+                      <span>{lang === 'en' ? 'Due Nov 26' : 'Vence 26 Nov'}</span>
+                    </div>
+                    <div className="w-full bg-stone-100 h-2 rounded-full overflow-hidden">
+                      <div className="bg-emerald-600 h-full rounded-full transition-all duration-500" style={{ width: '60%' }} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Next Course Card */}
+                <div className="bg-white border border-emerald-300 rounded-2xl p-3.5 shadow-xs space-y-2 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-bl-lg">
+                    {lang === 'en' ? 'Up Next' : 'Siguiente'}
+                  </div>
+                  <div className="text-[10px] text-stone-400 font-mono">LS3000 · 25 min</div>
+                  <h5 className="font-bold text-stone-900 text-xs">
+                    {lang === 'en' ? 'Client Rights & Abuse Prevention' : 'Derechos del Cliente y Prevención de Abuso'}
+                  </h5>
+                  <p className="text-[11px] text-stone-600 leading-relaxed">
+                    {lang === 'en'
+                      ? 'Mandatory Colorado IHSS standard covering client dignity, privacy, and incident reporting protocols.'
+                      : 'Norma de Colorado IHSS sobre dignidad, privacidad del cliente y reporte de incidentes.'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => showToast(lang === 'en' ? 'Launching LearnWorlds player...' : 'Iniciando módulo en LearnWorlds...')}
+                    className="w-full bg-[#1B381E] hover:bg-emerald-900 text-white font-bold py-2 rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow-xs"
+                  >
+                    <span>▶️</span>
+                    <span>{lang === 'en' ? 'Start Course' : 'Comenzar'}</span>
+                  </button>
+                </div>
+
+                {/* Upcoming Live Session */}
+                <div className="bg-white border border-stone-200 rounded-2xl p-3.5 shadow-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-stone-900 text-xs">
+                      {lang === 'en' ? 'Upcoming Live Session' : 'Sesión Práctica en Vivo'}
+                    </span>
+                    <span className="text-[10px] bg-blue-50 text-blue-700 font-semibold px-2 py-0.5 rounded-md">
+                      {lang === 'en' ? 'In-person' : 'Presencial'}
+                    </span>
+                  </div>
+                  <div className="text-xs font-semibold text-stone-800">
+                    {lang === 'en' ? 'Service Skills Validation Lab' : 'Taller Práctico de Habilidades Clínicas'}
+                  </div>
+                  <div className="text-[11px] text-stone-500 space-y-0.5">
+                    <div>📅 {lang === 'en' ? 'Tomorrow, Nov 19 · 10:00 AM' : 'Mañana, 19 Nov · 10:00 AM'}</div>
+                    <div>📍 Denver Training Center (Room 2B)</div>
+                    <div>👩‍⚕️ Dana Whitfield, RN</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => showToast(lang === 'en' ? 'Added session to device calendar (.ics downloaded)' : 'Sesión agregada al calendario (.ics)')}
+                    className="w-full bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold py-1.5 rounded-xl text-xs transition border border-stone-300 flex items-center justify-center gap-1.5"
+                  >
+                    <span>📅</span>
+                    <span>{lang === 'en' ? 'Add to calendar' : 'Agregar al calendario'}</span>
+                  </button>
+                </div>
+
+                {/* Quizzes Status */}
+                <div className="bg-white border border-stone-200 rounded-2xl p-3.5 shadow-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-stone-900 text-xs">
+                      {lang === 'en' ? 'Quiz Evaluation' : 'Examen / Cuestionario'}
+                    </span>
+                    <span className="text-[10px] text-stone-400">
+                      {lang === 'en' ? 'Pass mark: 80%' : 'Aprobación: 80%'}
+                    </span>
+                  </div>
+                  <div className="p-2.5 bg-stone-50 rounded-xl border border-stone-200 flex items-center justify-between">
+                    <div>
+                      <div className="font-semibold text-xs text-stone-800">
+                        {lang === 'en' ? 'Emergency Protocol Quiz' : 'Cuestionario de Emergencias'}
+                      </div>
+                      <div className="text-[10px] text-stone-500">
+                        {lang === 'en' ? 'Attempt 1 of 2 · Score: 85%' : 'Intento 1 de 2 · Puntaje: 85%'}
+                      </div>
+                    </div>
+                    <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">
+                      {lang === 'en' ? 'Passed' : 'Aprobado'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Completed Certificates */}
+                <div className="bg-white border border-stone-200 rounded-2xl p-3.5 shadow-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-stone-900 text-xs">
+                      {lang === 'en' ? 'Certificates' : 'Certificados'}
+                    </span>
+                    <span className="text-[10px] text-stone-400">2 issued</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between p-2 bg-stone-50 rounded-xl border border-stone-200 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="text-emerald-700 text-base">📜</span>
+                        <div>
+                          <div className="font-semibold text-stone-800 text-[11px]">
+                            {lang === 'en' ? 'LiliSare Foundations (LS1000)' : 'Fundamentos LiliSare (LS1000)'}
+                          </div>
+                          <div className="text-[9px] text-stone-400">Issued Oct 14, 2026</div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => showToast(lang === 'en' ? 'Downloading PDF certificate...' : 'Descargando certificado en PDF...')}
+                        className="text-[10px] font-bold text-emerald-800 hover:underline"
+                      >
+                        {lang === 'en' ? 'View' : 'Ver'}
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2 bg-stone-50 rounded-xl border border-stone-200 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="text-emerald-700 text-base">📜</span>
+                        <div>
+                          <div className="font-semibold text-stone-800 text-[11px]">
+                            {lang === 'en' ? 'HIPAA & Privacy Standards' : 'Privacidad y Normas HIPAA'}
+                          </div>
+                          <div className="text-[9px] text-stone-400">Issued Sep 28, 2026</div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => showToast(lang === 'en' ? 'Downloading PDF certificate...' : 'Descargando certificado en PDF...')}
+                        className="text-[10px] font-bold text-emerald-800 hover:underline"
+                      >
+                        {lang === 'en' ? 'View' : 'Ver'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setIsClockedIn(!isClockedIn);
-                  showToast(isClockedIn ? 'EVV Clock-out verified with GPS.' : 'EVV Clock-in verified.');
-                }}
-                className={`w-full py-2.5 rounded-xl font-bold text-xs shadow-xs transition flex items-center justify-center gap-2 ${
-                  isClockedIn
-                    ? 'bg-rose-600 hover:bg-rose-700 text-white'
-                    : 'bg-[#3E6B2B] hover:bg-[#335a23] text-white'
-                }`}
-              >
-                <span>{isClockedIn ? '⏱️ Clock Out & Sign' : '▶️ Clock In (EVV)'}</span>
-              </button>
-            </div>
-
-            {/* Care Tasks Checklist */}
-            <div className="bg-white border border-stone-200 rounded-2xl p-3.5 shadow-xs space-y-2">
-              <div className="font-bold text-xs text-stone-900 flex items-center justify-between">
-                <span>Care Plan Tasks</span>
-                <span className="text-[10px] text-stone-400">3 of 4 done</span>
-              </div>
-
-              <div className="space-y-1.5 text-xs">
-                <label className="flex items-center gap-2 p-1.5 bg-stone-50 rounded-lg cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={tasks.hygiene}
-                    onChange={() => toggleTask('hygiene')}
-                    className="rounded accent-[#3E6B2B]"
-                  />
-                  <span className={tasks.hygiene ? 'line-through text-stone-400' : 'text-stone-800'}>
-                    Assisted with morning hygiene & dressing
-                  </span>
-                </label>
-
-                <label className="flex items-center gap-2 p-1.5 bg-stone-50 rounded-lg cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={tasks.meds}
-                    onChange={() => toggleTask('meds')}
-                    className="rounded accent-[#3E6B2B]"
-                  />
-                  <span className={tasks.meds ? 'line-through text-stone-400' : 'text-stone-800'}>
-                    Blood pressure medication reminder (9:00 AM)
-                  </span>
-                </label>
-
-                <label className="flex items-center gap-2 p-1.5 bg-stone-50 rounded-lg cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={tasks.meal}
-                    onChange={() => toggleTask('meal')}
-                    className="rounded accent-[#3E6B2B]"
-                  />
-                  <span className={tasks.meal ? 'line-through text-stone-400' : 'text-stone-800'}>
-                    Midday meal preparation & hydration
-                  </span>
-                </label>
-
-                <label className="flex items-center gap-2 p-1.5 bg-stone-50 rounded-lg cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={tasks.transfers}
-                    onChange={() => toggleTask('transfers')}
-                    className="rounded accent-[#3E6B2B]"
-                  />
-                  <span className={tasks.transfers ? 'line-through text-stone-400' : 'text-stone-800'}>
-                    Mobility assistance using rolling walker
-                  </span>
-                </label>
-              </div>
-            </div>
-
-            {/* Voice Dictate Care Note */}
-            <div className="bg-white border border-stone-200 rounded-2xl p-3.5 shadow-xs space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-xs text-stone-900">Shift Visit Note</span>
-                <button
-                  type="button"
-                  onClick={handleVoiceToggle}
-                  className={`px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 transition ${
-                    isRecording ? 'bg-rose-500 text-white animate-pulse' : 'bg-emerald-100 text-emerald-800'
-                  }`}
-                >
-                  <span>{isRecording ? '🔴 Listening...' : '🎙️ Dictate'}</span>
-                </button>
-              </div>
-
-              <textarea
-                rows={3}
-                value={noteText}
-                onChange={(e) => setNoteText(e.target.value)}
-                className="w-full p-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-800 focus:outline-none focus:ring-1 focus:ring-[#3E6B2B]"
-              />
-
-              <button
-                type="button"
-                onClick={() => showToast('Care note submitted for clinical review.')}
-                className="w-full bg-stone-900 hover:bg-stone-800 text-white font-semibold py-2 rounded-xl text-xs transition"
-              >
-                Submit note to agency
-              </button>
-            </div>
-
-            {/* Training Academy Module */}
-            <div className="bg-white border border-stone-200 rounded-2xl p-3.5 shadow-xs space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-xs text-stone-900">LiliSare Academy</span>
-                <span className="text-[10px] text-emerald-700 font-semibold">100% Up to date</span>
-              </div>
-              <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-[11px]">
-                <span className="font-semibold text-emerald-900">Annual HIPAA & Elder Safety</span>
-                <span className="text-emerald-700 font-bold">Completed ✓</span>
-              </div>
-            </div>
+            )}
           </div>
 
           {/* Phone Bottom Home Bar */}

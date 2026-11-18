@@ -28,7 +28,7 @@ const getStaffColor = (staff: string) => {
 };
 
 export const CaregiversPage: React.FC = () => {
-  const { showToast, addFeed, deIdentify } = useApp();
+  const { showToast, addFeed, deIdentify, navigate } = useApp();
 
   // View Switcher: Recruitment Pipeline (default) vs Active Caregivers Roster
   const [viewTab, setViewTab] = useState<'recruitment' | 'roster'>('recruitment');
@@ -475,6 +475,33 @@ export const CaregiversPage: React.FC = () => {
                     <span className="text-[10px] text-stone-400 block font-semibold">CBI Check</span>
                     <span className="font-bold text-stone-800">{selectedApplicant.cbiStatus || 'Pending'}</span>
                   </div>
+                </div>
+              </div>
+
+              {/* Training Status Card */}
+              <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-emerald-950 flex items-center gap-1.5">
+                    <span>🎓</span>
+                    <span>Training & Academy Record</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedApplicant(null);
+                      navigate('training');
+                    }}
+                    className="text-xs font-bold text-[#3E6B2B] hover:underline"
+                  >
+                    Open in Training →
+                  </button>
+                </div>
+                <div className="flex justify-between items-center text-xs text-stone-700">
+                  <span>Assigned: <strong>LS3000 In-Home Care Foundations</strong></span>
+                  <span className="font-bold text-emerald-800">{selectedApplicant.currentStep > 3 ? '100% Complete' : 'In Progress (60%)'}</span>
+                </div>
+                <div className="w-full bg-stone-200 rounded-full h-1.5 overflow-hidden">
+                  <div className="bg-[#3E6B2B] h-full rounded-full" style={{ width: selectedApplicant.currentStep > 3 ? '100%' : '60%' }} />
                 </div>
               </div>
 
