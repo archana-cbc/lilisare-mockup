@@ -1179,6 +1179,181 @@ export const NAV: NavGroup[] = [
 
 export const FLAT_NAV = NAV.flatMap((n) => n.items);
 
+export interface DemoWorkspace {
+  id: string;
+  name: string;
+  category: 'Staff' | 'External';
+  user: string;
+  email: string;
+  avatar: string;
+  oneLine: string;
+  description: string;
+  highlights: string[];
+  allowedPages: string[];
+  initialPage: string;
+  icon: string;
+}
+
+export const DEMO_WORKSPACES: DemoWorkspace[] = [
+  {
+    id: 'admin',
+    name: 'Administrator',
+    category: 'Staff',
+    user: 'Lisa Connell',
+    email: 'admin@lilisare-demo.com',
+    avatar: 'L',
+    oneLine: 'Full access, users, reports',
+    description: 'Unrestricted security clearance across all clinical, financial, and administrative operations.',
+    highlights: [
+      'Manage all 20 modules, state billing rules, and system integrations',
+      'Full control over user permissions, caseloads, and HIPAA audit trails',
+      'Executive KPI dashboards, payroll readiness, and profitability reports',
+    ],
+    allowedPages: [
+      'today', 'intake', 'cg-intake', 'onboarding', 'audit', 'emails',
+      'clients', 'caregivers', 'screening', 'scheduling', 'compliance',
+      'billing', 'profit', 'reports', 'rules', 'systems', 'migration',
+      'users', 'settings', 'roadmap'
+    ],
+    initialPage: 'today',
+    icon: 'shield-check',
+  },
+  {
+    id: 'onboarding',
+    name: 'Enrollment and Onboarding',
+    category: 'Staff',
+    user: 'Maya R.',
+    email: 'onboarding@lilisare-demo.com',
+    avatar: 'M',
+    oneLine: 'Client intake, caregiver hiring, onboarding',
+    description: 'Drive family inquiries from first call to signed authorization and guide caregiver applicants through credentialing.',
+    highlights: [
+      'Track client inquiries, case manager coordination, and service agreements',
+      'Guide caregiver applicants through I-9, background checks, and skills training',
+      'Dual-track household onboarding with automated reminder follow-ups',
+    ],
+    allowedPages: [
+      'today', 'intake', 'cg-intake', 'onboarding', 'clients', 'caregivers', 'screening', 'emails'
+    ],
+    initialPage: 'intake',
+    icon: 'user-plus',
+  },
+  {
+    id: 'clinical',
+    name: 'Compliance and Clinical',
+    category: 'Staff',
+    user: 'Dana Whitfield, RN',
+    email: 'clinical@lilisare-demo.com',
+    avatar: 'D',
+    oneLine: 'Care notes, credentials, supervisory visits',
+    description: 'Review daily clinical notes, audit regulatory compliance, and supervise in-home care delivery.',
+    highlights: [
+      'AI-assisted clinical note review with zero fact fabrication',
+      'Track 60-day in-home supervisory RN visits and care plan goals',
+      'Monitor caregiver license renewals, CPR expirations, and EVV exceptions',
+    ],
+    allowedPages: [
+      'today', 'audit', 'compliance', 'screening', 'clients', 'caregivers'
+    ],
+    initialPage: 'audit',
+    icon: 'clipboard-heart',
+  },
+  {
+    id: 'scheduling',
+    name: 'Scheduling',
+    category: 'Staff',
+    user: 'Devon Brooks',
+    email: 'scheduler@lilisare-demo.com',
+    avatar: 'D',
+    oneLine: 'Shifts, EVV and time corrections',
+    description: 'Coordinate caregiver shifts, resolve EVV exceptions, and dispatch emergency coverage.',
+    highlights: [
+      'Calendar grid of all scheduled in-home shifts and open visits',
+      'Real-time GPS clock-in verification and geofence exception management',
+      'Caregiver availability tracking and overtime alert monitoring',
+    ],
+    allowedPages: [
+      'today', 'scheduling', 'clients', 'caregivers'
+    ],
+    initialPage: 'scheduling',
+    icon: 'calendar-clock',
+  },
+  {
+    id: 'billing',
+    name: 'Billing and Payroll',
+    category: 'Staff',
+    user: 'Marcus Vance',
+    email: 'billing@lilisare-demo.com',
+    avatar: 'M',
+    oneLine: 'Claims, denials, payroll readiness',
+    description: 'Validate billable hours against Medicaid authorizations, submit EDI claims, and export to ADP.',
+    highlights: [
+      'Review unbilled shifts and fix missing diagnosis codes or clock-outs',
+      'Track claim denial appeals and prior authorization utilization rates',
+      'Export verified caregiver hours directly into ADP semi-monthly payroll',
+    ],
+    allowedPages: [
+      'today', 'billing', 'profit', 'reports'
+    ],
+    initialPage: 'billing',
+    icon: 'receipt-dollar',
+  },
+  {
+    id: 'caregiver',
+    name: 'Caregiver',
+    category: 'External',
+    user: 'Rosa Vega',
+    email: 'caregiver@lilisare-demo.com',
+    avatar: 'R',
+    oneLine: 'Clock in, notes, training',
+    description: 'Mobile experience for family and field caregivers to record shifts, dictate notes, and complete academy courses.',
+    highlights: [
+      'One-tap EVV GPS clock-in and clock-out with offline capability',
+      'Voice-dictate visit notes with guided prompts and automatic formatting',
+      'View scheduled shifts, client care plan goals, and assigned training',
+    ],
+    allowedPages: ['caregiver-portal'],
+    initialPage: 'caregiver-portal',
+    icon: 'smartphone-heart',
+  },
+  {
+    id: 'family',
+    name: 'Family / Responsible Party',
+    category: 'External',
+    user: 'Carlos Vega',
+    email: 'family@lilisare-demo.com',
+    avatar: 'C',
+    oneLine: 'Schedule, documents to sign',
+    description: 'Transparent client portal for family members to stay informed about their loved one\'s daily care.',
+    highlights: [
+      'View live visit schedules, arrival confirmations, and caregiver profiles',
+      'Review simplified care plan goals and nurse supervisory summaries',
+      'Electronically review and sign Medicaid authorization packets',
+    ],
+    allowedPages: ['family-portal'],
+    initialPage: 'family-portal',
+    icon: 'users-group',
+  },
+  {
+    id: 'casemanager',
+    name: 'Case Manager',
+    category: 'External',
+    user: 'Sarah Jenkins (RMHS)',
+    email: 'casemanager@lilisare-demo.com',
+    avatar: 'S',
+    oneLine: 'Authorizations and service plans',
+    description: 'State Medicaid and Case Management Agency (CMA) portal for authorization tracking and PAR uploads.',
+    highlights: [
+      'Inspect linked state Medicaid clients and current authorization status',
+      'Upload approved Prior Authorization Requests (PARs) and service plans',
+      'Send secure follow-ups and service discussion notes directly to agency staff',
+    ],
+    allowedPages: ['casemanager-portal'],
+    initialPage: 'casemanager-portal',
+    icon: 'file-check',
+  },
+];
+
 export const formatCurrency = (n: number) => '$' + n.toLocaleString();
 
 export const SEED_FEED: FeedItem[] = [

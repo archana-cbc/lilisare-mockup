@@ -5,7 +5,16 @@ import { useApp } from '@/context/AppContext';
 import { NAV, NavGroup, NavItem } from '@/data/mockData';
 
 export const Sidebar: React.FC = () => {
-  const { page, navigate, isMobileNavOpen, setIsMobileNavOpen, showToast } = useApp();
+  const {
+    page,
+    navigate,
+    isMobileNavOpen,
+    setIsMobileNavOpen,
+    showToast,
+    currentWorkspace,
+    logout,
+    setIsWorkspacePickerOpen,
+  } = useApp();
 
   // Desktop collapse state (full width vs. icon rail)
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -27,6 +36,42 @@ export const Sidebar: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, [isProfileMenuOpen]);
 
+  // Filter NAV groups and items according to currentWorkspace.allowedPages
+  const visibleNavGroups = useMemo(() => {
+    // For external roles (Caregiver, Family, Case Manager), show their dedicated portal menu item
+    if (currentWorkspace.category === 'External') {
+      return [
+        {
+          id: currentWorkspace.initialPage,
+          name: `${currentWorkspace.name} Portal`,
+          icon: currentWorkspace.icon,
+          isExpandable: false,
+          directId: currentWorkspace.initialPage,
+          items: [{ id: currentWorkspace.initialPage, label: `${currentWorkspace.name} Portal` }],
+        },
+      ];
+    }
+
+    return NAV.map((group) => {
+      if (!group.isExpandable && group.directId) {
+        const isAllowed = currentWorkspace.allowedPages.includes(group.directId);
+        return isAllowed ? group : null;
+      }
+
+      // Filter sub-items by currentWorkspace allowedPages
+      const allowedItems = group.items.filter((item) =>
+        currentWorkspace.allowedPages.includes(item.id)
+      );
+
+      if (allowedItems.length === 0) return null;
+
+      return {
+        ...group,
+        items: allowedItems,
+      };
+    }).filter(Boolean) as NavGroup[];
+  }, [currentWorkspace]);
+
   // Expanded state for menu sections: key is group id, value is boolean
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {};
@@ -40,7 +85,7 @@ export const Sidebar: React.FC = () => {
 
   // Whenever the active page changes, auto-expand its parent group
   useEffect(() => {
-    NAV.forEach((group) => {
+    visibleNavGroups.forEach((group) => {
       if (group.isExpandable && group.items.some((item) => item.id === page)) {
         setExpandedGroups((prev) => ({
           ...prev,
@@ -48,7 +93,7 @@ export const Sidebar: React.FC = () => {
         }));
       }
     });
-  }, [page]);
+  }, [page, visibleNavGroups]);
 
   const toggleGroup = (groupId: string) => {
     if (isCollapsed) {
@@ -63,7 +108,7 @@ export const Sidebar: React.FC = () => {
     }));
   };
 
-  // SVG Icons matching modern stroke style from reference
+  // SVG Icons matching modern stroke style
   const renderIcon = (iconName: string, className = 'w-5 h-5 shrink-0') => {
     switch (iconName) {
       case 'home':
@@ -109,6 +154,24 @@ export const Sidebar: React.FC = () => {
             <path strokeLinecap="round" strokeLinejoin="round" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
           </svg>
         );
+      case 'smartphone-heart':
+        return (
+          <svg className={className} fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+          </svg>
+        );
+      case 'users-group':
+        return (
+          <svg className={className} fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+          </svg>
+        );
+      case 'file-check':
+        return (
+          <svg className={className} fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        );
       default:
         return (
           <svg className={className} fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
@@ -141,7 +204,7 @@ export const Sidebar: React.FC = () => {
             <button
               type="button"
               onClick={() => {
-                navigate('today');
+                navigate(currentWorkspace.initialPage);
                 setIsMobileNavOpen(false);
               }}
               aria-label="LiliSare Home"
@@ -157,7 +220,7 @@ export const Sidebar: React.FC = () => {
             <button
               type="button"
               onClick={() => {
-                navigate('today');
+                navigate(currentWorkspace.initialPage);
                 setIsMobileNavOpen(false);
               }}
               aria-label="LiliSare Home"
@@ -197,8 +260,8 @@ export const Sidebar: React.FC = () => {
 
         {/* MIDDLE SCROLLABLE NAVIGATION LIST */}
         <nav className="flex-1 overflow-y-auto space-y-1.5 pr-0.5 custom-scrollbar">
-          {NAV.map((group) => {
-            // Standalone Direct Link (e.g. Today)
+          {visibleNavGroups.map((group) => {
+            // Standalone Direct Link (e.g. Today or Portal)
             if (!group.isExpandable && group.directId) {
               const isActive = page === group.directId;
               return (
@@ -229,7 +292,6 @@ export const Sidebar: React.FC = () => {
             // Expandable Menu Group
             const isExpanded = !!expandedGroups[group.id];
             const hasActiveChild = group.items.some((item) => item.id === page);
-            // Sum of any badges in this group (e.g., 26 in Care Notes)
             const totalBadges = group.items.reduce((sum, item) => sum + (item.badge || 0), 0);
 
             return (
@@ -255,14 +317,12 @@ export const Sidebar: React.FC = () => {
 
                   {!isCollapsed && (
                     <div className="flex items-center gap-1.5 shrink-0">
-                      {/* Show badge on parent when group is collapsed */}
                       {!isExpanded && totalBadges > 0 && (
                         <span className="bg-[#F2B632] text-stone-900 text-[11px] font-bold rounded-full px-2 py-0.5 leading-none shadow-xs">
                           {totalBadges}
                         </span>
                       )}
 
-                      {/* Small Chevron indicator that rotates */}
                       <svg
                         className={`w-4 h-4 text-white/60 group-hover:text-white transition-transform duration-200 ${
                           isExpanded ? 'transform rotate-180' : ''
@@ -313,7 +373,7 @@ export const Sidebar: React.FC = () => {
           })}
         </nav>
 
-        {/* BOTTOM USER PROFILE CARD (Directly matching reference) */}
+        {/* BOTTOM USER PROFILE CARD (Reflecting Active Demo Workspace) */}
         <div className="pt-3 border-t border-white/15 shrink-0 relative">
           <button
             type="button"
@@ -324,18 +384,18 @@ export const Sidebar: React.FC = () => {
             }`}
           >
             <div className="flex items-center gap-2.5 min-w-0">
-              {/* Vibrant Emerald Avatar with Initial 'A' */}
+              {/* Vibrant Emerald Avatar with Initial */}
               <div className="w-9 h-9 rounded-full bg-[#10B981] text-white font-bold text-sm flex items-center justify-center shrink-0 shadow-sm border border-white/20">
-                A
+                {currentWorkspace.avatar}
               </div>
 
               {!isCollapsed && (
                 <div className="min-w-0 flex-1">
                   <div className="font-semibold text-sm text-white truncate leading-tight">
-                    Archana
+                    {currentWorkspace.user}
                   </div>
                   <div className="text-[11px] text-white/65 truncate leading-tight mt-0.5">
-                    archana@creativebuffer.com
+                    {currentWorkspace.name} · LiliSare
                   </div>
                 </div>
               )}
@@ -366,14 +426,14 @@ export const Sidebar: React.FC = () => {
               {/* User Header */}
               <div className="px-3 py-2.5 border-b border-white/10 mb-1.5">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="font-bold text-white text-sm">Archana</div>
+                  <div className="font-bold text-white text-sm">{currentWorkspace.user}</div>
                   <span className="inline-flex items-center gap-1 bg-white/15 text-emerald-300 font-semibold text-[10px] px-2 py-0.5 rounded-full border border-white/10">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                    Administrator
+                    {currentWorkspace.name}
                   </span>
                 </div>
                 <div className="text-white/70 truncate text-[11px] mt-0.5">
-                  archana@creativebuffer.com
+                  {currentWorkspace.email}
                 </div>
               </div>
 
@@ -383,47 +443,53 @@ export const Sidebar: React.FC = () => {
                   type="button"
                   onClick={() => {
                     setIsProfileMenuOpen(false);
-                    navigate('users');
+                    setIsWorkspacePickerOpen(true);
                   }}
-                  className="w-full text-left px-2.5 py-2 rounded-xl text-white/85 hover:text-white hover:bg-white/10 transition flex items-center gap-2.5 font-medium group"
+                  className="w-full text-left px-2.5 py-2 rounded-xl text-white/90 hover:text-white hover:bg-white/10 transition flex items-center gap-2.5 font-medium group"
                 >
-                  <svg className="w-4 h-4 text-white/60 group-hover:text-white transition shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                    <circle cx="9" cy="7" r="4" strokeLinecap="round" strokeLinejoin="round" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M22 21v-2a4 4 0 0 0-3-3.87" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M16 3.13a4 4 0 0 1 0 7.75" />
-                  </svg>
-                  <span>Caseload & Roles</span>
+                  <span>🔄</span>
+                  <span>Switch demo workspace</span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsProfileMenuOpen(false);
-                    navigate('settings');
-                  }}
-                  className="w-full text-left px-2.5 py-2 rounded-xl text-white/85 hover:text-white hover:bg-white/10 transition flex items-center gap-2.5 font-medium group"
-                >
-                  <svg className="w-4 h-4 text-white/60 group-hover:text-white transition shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
-                    <circle cx="12" cy="12" r="3" strokeLinecap="round" strokeLinejoin="round" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                  </svg>
-                  <span>Organization Settings</span>
-                </button>
+                {currentWorkspace.allowedPages.includes('users') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsProfileMenuOpen(false);
+                      navigate('users');
+                    }}
+                    className="w-full text-left px-2.5 py-2 rounded-xl text-white/85 hover:text-white hover:bg-white/10 transition flex items-center gap-2.5 font-medium group"
+                  >
+                    <span>👥</span>
+                    <span>Caseload & Roles</span>
+                  </button>
+                )}
+
+                {currentWorkspace.allowedPages.includes('settings') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsProfileMenuOpen(false);
+                      navigate('settings');
+                    }}
+                    className="w-full text-left px-2.5 py-2 rounded-xl text-white/85 hover:text-white hover:bg-white/10 transition flex items-center gap-2.5 font-medium group"
+                  >
+                    <span>⚙️</span>
+                    <span>Organization Settings</span>
+                  </button>
+                )}
 
                 <div className="pt-1 mt-1 border-t border-white/10">
                   <button
                     type="button"
                     onClick={() => {
                       setIsProfileMenuOpen(false);
-                      showToast('Signed out (demo)');
+                      logout();
                     }}
                     className="w-full text-left px-2.5 py-2 rounded-xl text-rose-300 hover:text-white hover:bg-rose-600/30 transition flex items-center gap-2.5 font-medium group"
                   >
-                    <svg className="w-4 h-4 text-rose-300/80 group-hover:text-white transition shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h4a3 3 0 0 1 3 3v1" />
-                    </svg>
-                    <span>Sign Out</span>
+                    <span>🚪</span>
+                    <span>Log out to /login</span>
                   </button>
                 </div>
               </div>

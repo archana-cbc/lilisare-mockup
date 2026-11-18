@@ -1,8 +1,8 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { FeedItem, PillColor } from '@/types';
-import { CL, CG, SEED_FEED, DEMO_EVENTS } from '@/data/mockData';
+import { FeedItem } from '@/types';
+import { CL, CG, SEED_FEED, DEMO_EVENTS, DEMO_WORKSPACES, DemoWorkspace } from '@/data/mockData';
 
 interface AppContextType {
   page: string;
@@ -24,6 +24,15 @@ interface AppContextType {
   setIsUserMenuOpen: (open: boolean) => void;
   deIdentify: (text: string) => string;
   isLoadingPage: boolean;
+
+  // Authentication & Workspace management
+  isAuthenticated: boolean;
+  currentWorkspace: DemoWorkspace;
+  switchWorkspace: (workspaceId: string) => void;
+  login: (workspaceId?: string) => void;
+  logout: () => void;
+  isWorkspacePickerOpen: boolean;
+  setIsWorkspacePickerOpen: (open: boolean) => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -37,7 +46,10 @@ export const useApp = () => {
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [page, setPage] = useState<string>('today');
+  // Start in login view by default as requested ("make it the entry point")
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string>('admin');
+  const [page, setPage] = useState<string>('login');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isLoadingPage, setIsLoadingPage] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -47,12 +59,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isDemoRunning, setIsDemoRunning] = useState<boolean>(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState<boolean>(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState<boolean>(false);
+  const [isWorkspacePickerOpen, setIsWorkspacePickerOpen] = useState<boolean>(false);
 
-  // Read initial hash
+  // Active workspace object
+  const currentWorkspace = useMemo(() => {
+    return DEMO_WORKSPACES.find((w) => w.id === currentWorkspaceId) || DEMO_WORKSPACES[0];
+  }, [currentWorkspaceId]);
+
+  // Read initial hash & check auth
   useEffect(() => {
     const handleHash = () => {
       const hash = window.location.hash.replace('#', '');
-      if (hash) {
+      if (hash === 'login') {
+        setIsAuthenticated(false);
+        setPage('login');
+      } else if (hash) {
         setPage(hash);
         setSelectedId(null);
       }
@@ -70,7 +91,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!toastMessage) return;
     const timer = setTimeout(() => {
       setToastMessage(null);
-    }, 2200);
+    }, 2400);
     return () => clearTimeout(timer);
   }, [toastMessage]);
 
@@ -82,8 +103,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsMobileNavOpen(false);
     setTimeout(() => {
       setIsLoadingPage(false);
-    }, 350);
+    }, 250);
   }, []);
+
+  // Login action
+  const login = useCallback(
+    (workspaceId = 'admin') => {
+      const ws = DEMO_WORKSPACES.find((w) => w.id === workspaceId) || DEMO_WORKSPACES[0];
+      setCurrentWorkspaceId(ws.id);
+      setIsAuthenticated(true);
+      navigate(ws.initialPage);
+      showToast(`Logged into ${ws.name} workspace.`);
+    },
+    [navigate, showToast]
+  );
+
+  // Logout action
+  const logout = useCallback(() => {
+    setIsAuthenticated(false);
+    setPage('login');
+    window.location.hash = 'login';
+    setIsMobileNavOpen(false);
+    setIsUserMenuOpen(false);
+    showToast('Signed out of LiliSare.');
+  }, [showToast]);
+
+  // Switch workspace while authenticated
+  const switchWorkspace = useCallback(
+    (workspaceId: string) => {
+      const ws = DEMO_WORKSPACES.find((w) => w.id === workspaceId) || DEMO_WORKSPACES[0];
+      setCurrentWorkspaceId(ws.id);
+      setIsWorkspacePickerOpen(false);
+      navigate(ws.initialPage);
+      showToast(`Switched to ${ws.name} workspace.`);
+    },
+    [navigate, showToast]
+  );
 
   const addFeed = useCallback((text: string, isHumanAction = false) => {
     setFeed((prev) => [{ t: text, h: isHumanAction, ago: 'just now' }, ...prev]);
@@ -158,6 +213,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsUserMenuOpen,
         deIdentify,
         isLoadingPage,
+        isAuthenticated,
+        currentWorkspace,
+        switchWorkspace,
+        login,
+        logout,
+        isWorkspacePickerOpen,
+        setIsWorkspacePickerOpen,
       }}
     >
       {children}
