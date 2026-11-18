@@ -1,793 +1,720 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '@/context/AppContext';
-import { CL, CG, STAFF } from '@/data/mockData';
 
-// Types
+// =========================================================================
+// TYPES
+// =========================================================================
 export interface FlagItem {
   phrase: string;
   ruleName: string;
-  category: 'wording' | 'safety' | 'missing';
+  category: 'wording' | 'missing' | 'safety';
   plainWhy: string;
-  plainFix: string;
-  suggestedReplacement?: string;
-  isUrgentSafety?: boolean;
-}
-
-export interface QuestionItem {
-  id: string;
-  question: string;
-  answer?: string;
-  isAnswered: boolean;
-  voiceRecorded?: boolean;
+  suggestedReplacement: string;
 }
 
 export interface AttachmentItem {
   id: string;
   name: string;
-  type: 'Wound/skin photo' | 'Incident' | 'Signed form' | 'Doctor\'s order' | 'Audio recording' | 'Other';
+  type: string;
   size: string;
   uploadedBy: string;
   uploadedAt: string;
-  url?: string;
 }
 
-export interface ClientVisitItem {
-  id: string;
-  date: string;
-  time: string;
-  caregiverName: string;
-  evvStatus: 'Verified' | 'Exception';
-  evvDetails: string;
-  tasks: string[];
-}
-
-export interface NoteRecord {
+export interface ShiftRecord {
   id: string;
   clientId: string;
-  clientName: string;
-  clientAge: number;
-  clientDob: string;
-  caregiverName: string;
-  program: 'IHSS' | 'CFC' | 'HCBS' | 'IRSS' | 'CNA' | 'HMA' | 'Personal Care';
-  visitDate: string;
-  visitTime: string;
-  evvStatus: 'Verified' | 'Exception';
-  evvDetails: string;
+  date: string;
+  time: string;
+  caregiver: string;
+  hours: string;
+  evvStatus: 'Verified' | 'Exception' | 'Pending';
+  noteStatus: 'Needs fix' | 'Waiting on caregiver' | 'Refined' | 'Approved' | 'No note yet';
+  weekGroup: 'This week' | 'Last week' | 'Two weeks ago';
   tasks: string[];
-  status: 'Needs fix' | 'Waiting on caregiver' | 'Urgent' | 'Approved';
-  isUrgentSafety: boolean;
-  originalText: string;
+  roughNote: string;
   flags: FlagItem[];
-  suggestedText: string;
-  placeholders: string[];
-  questions: QuestionItem[];
-  attachments: AttachmentItem[];
-  assignedReviewer: string;
-  inCaseload: boolean;
-  clientContext: {
-    authorizedHours: string;
-    carePlanGoals: string[];
-    lastThreeNotes: string[];
+  quickDetails: Array<{ id: string; question: string; answer: string }>;
+  isSafetyRisk?: boolean;
+  refinedOutputs: {
+    narrativeStandard: string;
+    narrativeShort: string;
+    narrativeDetailed: string;
+    soapStandard: string;
+    bulletsStandard: string;
+    stateStandard: string;
+    spanishStandard: string;
   };
-  timeline: Array<{
-    title: string;
-    actor: string;
-    time: string;
-    note?: string;
-  }>;
+  attachments: AttachmentItem[];
 }
 
-export interface ComplianceRule {
+export interface ClientCoachItem {
   id: string;
   name: string;
-  description: string;
-  appliesTo: string[];
-  severity: 'High' | 'Medium' | 'Low';
-  exampleBad: string;
-  exampleGood: string;
-  isActive: boolean;
-  source: string;
-  lastUpdatedBy: string;
-  lastUpdatedAt: string;
+  maskedId: string;
+  age: number;
+  dob: string;
+  program: 'IHSS' | 'CFC' | 'HCBS' | 'IRSS' | 'HMA';
+  caregiver: string;
+  notesNeedingWork: number;
+  shifts: ShiftRecord[];
+  carePlanGoals: string[];
+  authorizedHours: string;
+  lastThreeNotes: string[];
 }
 
-// 4 Canonical Sample Notes (incorporating vague, subjective, missing details, and safety-risk scenarios)
-const INITIAL_NOTES: NoteRecord[] = [
+// =========================================================================
+// DEMO DATA: 5 CLIENTS WITH 8-12 SHIFTS EACH ACROSS 3 WEEKS
+// =========================================================================
+const CLIENTS_DATA: ClientCoachItem[] = [
   {
-    id: 'NOTE-101',
-    clientId: 'C-1001',
-    clientName: 'Marisol Vega',
-    clientAge: 67,
-    clientDob: 'Oct 14, 1959',
-    caregiverName: 'Rosa Vega',
+    id: 'C-1001',
+    name: 'Marisol Vega',
+    maskedId: 'C-***1',
+    age: 67,
+    dob: 'Oct 14, 1959',
     program: 'IHSS',
-    visitDate: 'Nov 17, 2026',
-    visitTime: '8:00 AM – 11:30 AM',
-    evvStatus: 'Verified',
-    evvDetails: 'Clock-in 8:02 AM · GPS Match (452 Elm St, Denver CO) · Verified',
-    tasks: ['Meal Preparation', 'Morning Hygiene', 'Medication Reminder'],
-    status: 'Urgent',
-    isUrgentSafety: true,
-    originalText:
-      'Client was difficult and refused to eat breakfast. I made her eat anyway because she needs food before taking her morning blood pressure medication.',
-    flags: [
-      {
-        phrase: 'difficult',
-        ruleName: 'Objective language rule (10 CCR 2505-10 § 8.510)',
-        category: 'wording',
-        plainWhy: 'Words like "difficult" describe an emotional reaction rather than factual observation.',
-        plainFix: 'Describe what the client did: "Client declined breakfast at 8:40 AM."',
-        suggestedReplacement: 'declined offered meal',
-      },
-      {
-        phrase: 'refused to eat breakfast',
-        ruleName: 'Documenting client choices & nutrition',
-        category: 'missing',
-        plainWhy: 'State rules require writing down what specific food was offered and what alternatives were tried.',
-        plainFix: 'Name the specific meal offered and how you followed up.',
-        suggestedReplacement: 'declined oatmeal at 8:40 AM and was offered alternative fruit',
-      },
-      {
-        phrase: 'made her eat anyway',
-        ruleName: 'Safety escalation: possible physical force',
-        category: 'safety',
-        plainWhy: 'This sounds like physical force or insistence without consent. State rules require clinical supervisor review.',
-        plainFix: 'Do not reword this. A clinical supervisor and RN must review the visit.',
-        suggestedReplacement: 're-offered meal with verbal encouragement after 15 minutes',
-        isUrgentSafety: true,
-      },
+    caregiver: 'Rosa Vega (Primary), Elena M.',
+    notesNeedingWork: 3,
+    authorizedHours: '28.0 hrs/week · IHSS Attendant Care',
+    carePlanGoals: [
+      'Maintain independent nutrition with verbal encouragement',
+      'Morning hypertension medication reminder at 9:00 AM with water',
+      'Safe transfers and mobility using rolling walker',
     ],
-    suggestedText:
-      'Client declined oatmeal at 8:40 AM. Caregiver offered [add alternative offered] after 15 minutes; client accepted yogurt and sliced fruit. Morning hypertension medication was reminded per care plan at 9:05 AM with water.',
-    placeholders: ['[add alternative offered]'],
-    questions: [
-      {
-        id: 'q1',
-        question: 'What specific food was offered when Marisol initially declined breakfast?',
-        answer: 'Prepared hot oatmeal, but Marisol wanted yogurt with sliced bananas instead.',
-        isAnswered: true,
-        voiceRecorded: false,
-      },
-      {
-        id: 'q2',
-        question: 'Did you use any physical restraint or physical force when encouraging her to eat?',
-        answer: 'No physical force whatsoever. I just placed the bowl near her and verbally encouraged her until she was ready.',
-        isAnswered: true,
-        voiceRecorded: true,
-      },
-      {
-        id: 'q3',
-        question: 'Was the morning blood pressure medication taken on schedule with water?',
-        answer: 'Yes, taken at 9:05 AM with a full glass of water without issue.',
-        isAnswered: true,
-        voiceRecorded: false,
-      },
+    lastThreeNotes: [
+      'Nov 16: Marisol ate full breakfast of yogurt and fruit. BP pills taken at 9:05 AM with water.',
+      'Nov 15: Assisted with morning shower and dressing. Client cheerful and engaged.',
+      'Nov 14: Client declined eggs, accepted toast and tea. Meds taken with supervision.',
     ],
-    attachments: [
+    shifts: [
       {
-        id: 'att-1',
-        name: 'Morning_Care_Audio_Recording.m4a',
-        type: 'Audio recording',
-        size: '1.2 MB',
-        uploadedBy: 'Rosa Vega (Caregiver)',
-        uploadedAt: 'Nov 17 · 11:34 AM',
+        id: 'SH-101',
+        clientId: 'C-1001',
+        date: 'Today, Nov 17',
+        time: '8:00 AM – 11:30 AM',
+        hours: '3.5h',
+        caregiver: 'Rosa Vega',
+        evvStatus: 'Verified',
+        noteStatus: 'Needs fix',
+        weekGroup: 'This week',
+        tasks: ['Meal preparation', 'Morning hygiene & bath', 'Medication reminder'],
+        roughNote:
+          "Got there around 8. Helped her with bath and stuff, made breakfast. She was grumpy and didn't eat much. Did the normal meds thing. Left at 11:30.",
+        flags: [
+          {
+            phrase: 'and stuff',
+            ruleName: 'Clear task description',
+            category: 'wording',
+            plainWhy: '"and stuff" is vague. State auditors require naming the specific personal care delivered.',
+            suggestedReplacement: 'morning oral care and hair grooming',
+          },
+          {
+            phrase: 'grumpy',
+            ruleName: 'Objective language rule (10 CCR 2505-10 § 8.510)',
+            category: 'wording',
+            plainWhy: '"grumpy" is a subjective characterization rather than observable behavior.',
+            suggestedReplacement: 'client expressed she was tired',
+          },
+          {
+            phrase: "didn't eat much",
+            ruleName: 'Nutritional documentation',
+            category: 'missing',
+            plainWhy: 'State rules require documenting the meal served and the approximate portion consumed.',
+            suggestedReplacement: 'ate approximately half of the yogurt and toast offered',
+          },
+          {
+            phrase: 'normal meds thing',
+            ruleName: 'Medication administration timing',
+            category: 'missing',
+            plainWhy: 'Medication reminders require the exact time, water intake, and client response.',
+            suggestedReplacement: 'prompted morning blood pressure medication at 9:05 AM with a full glass of water',
+          },
+        ],
+        quickDetails: [
+          { id: 'q1', question: 'What did she eat?', answer: 'About half of the yogurt and toast offered' },
+          { id: 'q2', question: 'Was medication given as planned?', answer: 'Yes, morning blood pressure meds at 9:05 AM with water' },
+          { id: 'q3', question: 'How long was the bath?', answer: '25 min, assisted safely with rolling walker' },
+        ],
+        attachments: [
+          { id: 'att-1', name: 'Shift_Checkin_GPS.pdf', type: 'EVV match audit', size: '120 KB', uploadedBy: 'System', uploadedAt: '8:02 AM' },
+        ],
+        refinedOutputs: {
+          narrativeStandard:
+            'Caregiver arrived at 8:00 AM. Assisted client with morning hygiene, including bathing (approx. 25 minutes) and oral care, utilizing rolling walker for safe transfers. Prepared breakfast of yogurt and toast; client expressed she was not hungry and consumed approximately half of the portion offered. Medication reminder provided at 9:05 AM; client self-administered morning blood pressure medication with water. Client was calm and cooperative. Caregiver departed at 11:30 AM.',
+          narrativeShort:
+            'Arrived 8:00 AM. Assisted with 25-minute bath and oral hygiene using walker. Client ate half of offered yogurt and toast. Blood pressure medication reminder provided at 9:05 AM with water. Client cooperative. Departed 11:30 AM.',
+          narrativeDetailed:
+            'Caregiver arrived on schedule at 8:00 AM. Assisted client with transfers using rolling walker to bathroom for morning hygiene routine, including a 25-minute supervised shower and oral care without loss of balance. Prepared breakfast of yogurt and wheat toast; client verbalized low morning appetite and ate approximately half of the serving. Provided reminder for physician-prescribed morning hypertension medication at 9:05 AM, which client took with a full glass of water. Client remained calm, alert, and resting safely in armchair upon caregiver departure at 11:30 AM.',
+          soapStandard:
+            'S: Client stated she was not very hungry this morning.\nO: Assisted with 25 min bath, transfers with rolling walker, and meal prep. Client consumed ~50% of yogurt and toast. Prompted morning blood pressure meds at 9:05 AM with water.\nA: Safe ambulation observed. Nutrition accepted with verbal encouragement.\nP: Continue scheduled morning IHSS attendant care and monitor breakfast intake.',
+          bulletsStandard:
+            '• Tasks completed: Supervised 25 min bathing, transfers with rolling walker, breakfast preparation, medication reminder.\n• Nutrition & intake: Prepared yogurt and toast; client consumed approximately half.\n• Medication: Prompted morning blood pressure medication at 9:05 AM with water.\n• Client status: Alert, cooperative, rested comfortably in armchair.',
+          stateStandard:
+            'COLORADO IHSS SERVICE SUMMARY\nClient: Marisol Vega | Date: Nov 17, 2026 | Shift: 8:00 AM – 11:30 AM\n1. Personal Care: Assisted with bathing (25 min) and morning hygiene using rolling walker.\n2. Nutrition: Prepared yogurt and toast; client consumed approx. 50%.\n3. Medication Reminder: Prompted morning blood pressure medication at 9:05 AM with water.\n4. Client Response: Calm, alert, no adverse events.',
+          spanishStandard:
+            'La cuidadora llegó a las 8:00 AM. Asistió a la clienta con la higiene matutina, incluyendo un baño de 25 minutos con andador rodante. Preparó el desayuno; la clienta consumió aproximadamente la mitad del yogur y tostada. Se brindó recordatorio para su medicamento de presión arterial a las 9:05 AM con agua. La clienta se mostró tranquila y colaboradora. Salida a las 11:30 AM.',
+        },
       },
-    ],
-    assignedReviewer: 'Maya R.',
-    inCaseload: true,
-    clientContext: {
-      authorizedHours: '28.0 hrs/week · IHSS Attendant Care',
-      carePlanGoals: [
-        'Maintain independent nutrition with verbal encouragement',
-        'Morning hypertension medication reminder at 9:00 AM',
-        'Safe transfers using rolling walker',
-      ],
-      lastThreeNotes: [
-        'Nov 16: Marisol ate full breakfast of yogurt and fruit. BP pills taken at 9:05 AM with water.',
-        'Nov 15: Assisted with morning shower and dressing. Client cheerful and engaged.',
-        'Nov 14: Client declined eggs, accepted toast and tea. Meds taken with supervision.',
-      ],
-    },
-    timeline: [
-      { title: 'Note dictated and submitted via mobile app', actor: 'Rosa Vega', time: 'Nov 17 · 11:35 AM' },
-      { title: 'Flagged for supervisor safety check', actor: 'System Rule R-02', time: 'Nov 17 · 11:36 AM', note: 'Safety escalation keywords detected' },
+      // Second shift on the same day (Evening with different caregiver)
+      {
+        id: 'SH-102',
+        clientId: 'C-1001',
+        date: 'Today, Nov 17',
+        time: '5:00 PM – 8:00 PM',
+        hours: '3.0h',
+        caregiver: 'Elena M.',
+        evvStatus: 'Verified',
+        noteStatus: 'Waiting on caregiver',
+        weekGroup: 'This week',
+        tasks: ['Dinner preparation', 'Evening medication reminder', 'Bed preparation'],
+        roughNote: 'Prepared light chicken soup for dinner. Client took evening meds at 7:00 PM with water. Assisted with night routine.',
+        flags: [],
+        quickDetails: [],
+        attachments: [],
+        refinedOutputs: {
+          narrativeStandard:
+            'Caregiver arrived at 5:00 PM. Prepared nutritious chicken soup; client ate full portion and drank 8oz water. Prompted scheduled evening medications at 7:00 PM with water. Assisted client with evening oral care, transfer to bed using rolling walker, and ensured call bell was in reach. Departed at 8:00 PM.',
+          narrativeShort: 'Prepared dinner soup; full portion eaten. Evening meds prompted at 7:00 PM. Assisted into bed with walker.',
+          narrativeDetailed: 'Prepared dinner soup; full portion eaten. Evening meds prompted at 7:00 PM. Assisted into bed with walker.',
+          soapStandard: 'S: Client ready for bed.\nO: Dinner prepared, meds at 7 PM.\nA: Safe.\nP: Continue.',
+          bulletsStandard: '• Dinner: Chicken soup eaten.\n• Meds: 7:00 PM.\n• Sleep prep: Safe transfer.',
+          stateStandard: 'COLORADO IHSS SUMMARY: Dinner and evening meds completed per care plan.',
+          spanishStandard: 'Preparó sopa para la cena. Medicamentos tomados a las 7:00 PM.',
+        },
+      },
+      {
+        id: 'SH-103',
+        clientId: 'C-1001',
+        date: 'Nov 16, 2026',
+        time: '8:00 AM – 11:30 AM',
+        hours: '3.5h',
+        caregiver: 'Rosa Vega',
+        evvStatus: 'Verified',
+        noteStatus: 'Approved',
+        weekGroup: 'This week',
+        tasks: ['Morning hygiene', 'Meal prep', 'Mobility supervision'],
+        roughNote: 'Marisol ate full breakfast of yogurt and fruit. BP pills taken at 9:05 AM with water. Assisted with morning hygiene.',
+        flags: [],
+        quickDetails: [],
+        attachments: [],
+        refinedOutputs: {
+          narrativeStandard: 'Assisted client with morning hygiene and walking exercise. Prepared breakfast; client consumed full portion. Meds taken at 9:05 AM.',
+          narrativeShort: 'Hygiene and breakfast completed. Meds taken 9:05 AM.',
+          narrativeDetailed: 'Hygiene and breakfast completed. Meds taken 9:05 AM.',
+          soapStandard: 'S: Good morning.\nO: Complete breakfast eaten.\nA: Stable.\nP: Continue.',
+          bulletsStandard: '• Breakfast eaten.\n• Hygiene complete.\n• Meds verified.',
+          stateStandard: 'IHSS visit verified.',
+          spanishStandard: 'Desayuno completo e higiene matutina asistida.',
+        },
+      },
+      {
+        id: 'SH-104',
+        clientId: 'C-1001',
+        date: 'Nov 15, 2026',
+        time: '8:00 AM – 11:30 AM',
+        hours: '3.5h',
+        caregiver: 'Rosa Vega',
+        evvStatus: 'Verified',
+        noteStatus: 'Refined',
+        weekGroup: 'This week',
+        tasks: ['Shower assist', 'Laundry', 'Medication reminder'],
+        roughNote: 'Shower went well. Did laundry. Client in good mood.',
+        flags: [],
+        quickDetails: [],
+        attachments: [],
+        refinedOutputs: {
+          narrativeStandard: 'Assisted client with shower transfer and morning routine. Washed and folded linens. Client calm and cheerful.',
+          narrativeShort: 'Shower assist and laundry done.',
+          narrativeDetailed: 'Shower assist and laundry done.',
+          soapStandard: 'S: Good mood.\nO: Shower completed safely.\nA: Stable.\nP: Continue.',
+          bulletsStandard: '• Shower: Completed.\n• Housekeeping: Linens washed.',
+          stateStandard: 'IHSS visit verified.',
+          spanishStandard: 'Ducha asistida y lavado de ropa.',
+        },
+      },
+      // Sample B: Safety Case (Nov 12)
+      {
+        id: 'SH-105',
+        clientId: 'C-1001',
+        date: 'Nov 12, 2026',
+        time: '8:00 AM – 11:30 AM',
+        hours: '3.5h',
+        caregiver: 'Rosa Vega',
+        evvStatus: 'Verified',
+        noteStatus: 'Needs fix',
+        weekGroup: 'Last week',
+        tasks: ['Morning hygiene', 'Breakfast prep', 'Medication reminder'],
+        roughNote:
+          'Got there at 8. Client was agitated and refused breakfast so I made her eat anyway because she needs food for her pills. She resisted and bruised her elbow against the bed frame.',
+        flags: [
+          {
+            phrase: 'made her eat anyway',
+            ruleName: 'Mandatory Safety Rule: Physical force or coercion',
+            category: 'safety',
+            plainWhy: 'Physical force or non-consensual care is strictly reportable under state Medicaid safety rules.',
+            suggestedReplacement: '',
+          },
+          {
+            phrase: 'bruised her elbow',
+            ruleName: 'Mandatory Safety Rule: Client injury or fall',
+            category: 'safety',
+            plainWhy: 'Any skin compromise, fall, or injury requires immediate supervisor notification and 24-hour HCPF reporting.',
+            suggestedReplacement: '',
+          },
+        ],
+        quickDetails: [],
+        isSafetyRisk: true,
+        attachments: [
+          { id: 'att-b1', name: 'Elbow_Injury_Photo.jpg', type: 'Injury photo', size: '1.9 MB', uploadedBy: 'Rosa Vega', uploadedAt: '11:32 AM' },
+        ],
+        refinedOutputs: {
+          narrativeStandard: '',
+          narrativeShort: '',
+          narrativeDetailed: '',
+          soapStandard: '',
+          bulletsStandard: '',
+          stateStandard: '',
+          spanishStandard: '',
+        },
+      },
+      {
+        id: 'SH-106',
+        clientId: 'C-1001',
+        date: 'Nov 11, 2026',
+        time: '8:00 AM – 11:30 AM',
+        hours: '3.5h',
+        caregiver: 'Rosa Vega',
+        evvStatus: 'Verified',
+        noteStatus: 'Approved',
+        weekGroup: 'Last week',
+        tasks: ['Morning care', 'Meal prep'],
+        roughNote: 'Client had oatmeal and tea. Assisted with morning hygiene and walking.',
+        flags: [],
+        quickDetails: [],
+        attachments: [],
+        refinedOutputs: {
+          narrativeStandard: 'Prepared oatmeal and tea. Assisted with morning hygiene and mobility walk.',
+          narrativeShort: 'Meal and hygiene assisted.',
+          narrativeDetailed: 'Meal and hygiene assisted.',
+          soapStandard: 'S: Normal.\nO: Meal eaten.\nA: Stable.\nP: Continue.',
+          bulletsStandard: '• Meal eaten.\n• Hygiene completed.',
+          stateStandard: 'IHSS verified.',
+          spanishStandard: 'Desayuno e higiene.',
+        },
+      },
+      {
+        id: 'SH-107',
+        clientId: 'C-1001',
+        date: 'Nov 10, 2026',
+        time: '5:00 PM – 8:00 PM',
+        hours: '3.0h',
+        caregiver: 'Elena M.',
+        evvStatus: 'Verified',
+        noteStatus: 'Approved',
+        weekGroup: 'Last week',
+        tasks: ['Dinner', 'Bedtime prep'],
+        roughNote: 'Assisted with evening meal and bed routine.',
+        flags: [],
+        quickDetails: [],
+        attachments: [],
+        refinedOutputs: {
+          narrativeStandard: 'Assisted with dinner and evening transfer to bed.',
+          narrativeShort: 'Dinner and bed transfer.',
+          narrativeDetailed: 'Dinner and bed transfer.',
+          soapStandard: 'S: Good evening.\nO: Dinner complete.\nA: Stable.\nP: Continue.',
+          bulletsStandard: '• Dinner.\n• Bed routine.',
+          stateStandard: 'IHSS verified.',
+          spanishStandard: 'Cena y descanso.',
+        },
+      },
+      {
+        id: 'SH-108',
+        clientId: 'C-1001',
+        date: 'Nov 04, 2026',
+        time: '8:00 AM – 11:30 AM',
+        hours: '3.5h',
+        caregiver: 'Rosa Vega',
+        evvStatus: 'Verified',
+        noteStatus: 'No note yet',
+        weekGroup: 'Two weeks ago',
+        tasks: ['Personal care', 'Meal prep'],
+        roughNote: '',
+        flags: [],
+        quickDetails: [],
+        attachments: [],
+        refinedOutputs: {
+          narrativeStandard: '',
+          narrativeShort: '',
+          narrativeDetailed: '',
+          soapStandard: '',
+          bulletsStandard: '',
+          stateStandard: '',
+          spanishStandard: '',
+        },
+      },
     ],
   },
+  // Sample D: Spanish note client
   {
-    id: 'NOTE-102',
-    clientId: 'C-1007',
-    clientName: 'Walter Hayes',
-    clientAge: 74,
-    clientDob: 'Mar 10, 1952',
-    caregiverName: 'Beth Hayes',
+    id: 'C-1007',
+    name: 'Walter Hayes',
+    maskedId: 'C-***7',
+    age: 74,
+    dob: 'Mar 10, 1952',
     program: 'CFC',
-    visitDate: 'Nov 17, 2026',
-    visitTime: '9:00 AM – 12:00 PM',
-    evvStatus: 'Verified',
-    evvDetails: 'Clock-in 9:00 AM · Clock-out 12:01 PM · GPS Match · Verified',
-    tasks: ['CFC Homemaking', 'Ambulation Supervision', 'Meal Preparation'],
-    status: 'Needs fix',
-    isUrgentSafety: false,
-    originalText: 'Did good today, took care of everything, normal routine and walked around the house. No complaints.',
-    flags: [
+    caregiver: 'Beth Hayes',
+    notesNeedingWork: 1,
+    authorizedHours: '18.0 hrs/week · CFC Community First Choice',
+    carePlanGoals: ['Safe indoor ambulation with single-point cane', 'Living area sanitation and homemaking'],
+    lastThreeNotes: ['Nov 15: Cleaned kitchen and assisted with cane walk.', 'Nov 12: Light housekeeping.'],
+    shifts: [
       {
-        phrase: 'Did good today',
-        ruleName: 'Objective language rule (10 CCR 2505-10 § 8.510)',
-        category: 'wording',
-        plainWhy: '"Did good" is vague and subjective. State auditors require observable descriptions of client functional status.',
-        plainFix: 'State specific observations: "Client ambulated with single-point cane without reports of pain."',
-        suggestedReplacement: 'Client reported feeling well and in good spirits',
+        id: 'SH-201',
+        clientId: 'C-1007',
+        date: 'Today, Nov 17',
+        time: '9:00 AM – 12:00 PM',
+        hours: '3.0h',
+        caregiver: 'Beth Hayes',
+        evvStatus: 'Verified',
+        noteStatus: 'Needs fix',
+        weekGroup: 'This week',
+        tasks: ['CFC Homemaking', 'Mobility supervision'],
+        roughNote: 'Did good today, took care of everything, normal routine and walked around the house. No complaints.',
+        flags: [
+          { phrase: 'Did good today', ruleName: 'Objective language rule', category: 'wording', plainWhy: 'Vague characterization.', suggestedReplacement: 'Client reported feeling well' },
+          { phrase: 'took care of everything', ruleName: 'Task substantiation', category: 'missing', plainWhy: 'Must specify authorized tasks.', suggestedReplacement: 'completed scheduled bed linen change and kitchen sanitation' },
+          { phrase: 'normal routine', ruleName: 'Specific observation', category: 'wording', plainWhy: 'Auditors require observable documentation.', suggestedReplacement: 'conducted 20-minute indoor mobility routine using prescribed cane' },
+        ],
+        quickDetails: [
+          { id: 'wq1', question: 'How long was the mobility walk?', answer: '20 minutes in hallway using cane without staggering' },
+          { id: 'wq2', question: 'Which homemaking tasks were finished?', answer: 'Changed bed linens and sanitized bathroom' },
+        ],
+        attachments: [],
+        refinedOutputs: {
+          narrativeStandard: 'Arrived at 9:00 AM. Assisted client with scheduled CFC homemaking tasks, including bed linen change and bathroom sanitization. Supervised client during 20-minute indoor mobility routine using prescribed single-point cane. Client demonstrated steady gait with no loss of balance. Departed at 12:00 PM.',
+          narrativeShort: 'Assisted with bed linen change and bathroom sanitation. Supervised 20 min cane ambulation with steady gait.',
+          narrativeDetailed: 'Visit conducted 9:00 AM – 12:00 PM per CFC authorization. Completed scheduled homemaking tasks: linen change and bathroom sanitization. Supervised client during mobility exercise: 20 minutes walking in hallway with single-point cane, maintaining steady gait. Client reported no discomfort.',
+          soapStandard: 'S: Client reported feeling well.\nO: Completed linen change. Supervised 20 min cane walk.\nA: Steady gait observed.\nP: Continue scheduled CFC homemaking.',
+          bulletsStandard: '• Homemaking: Bed linen change and bathroom sanitization.\n• Mobility: Supervised 20 min indoor cane walk.\n• Status: Alert, stable gait.',
+          stateStandard: 'COLORADO CFC SUMMARY: Homemaking and mobility supervision completed per care plan.',
+          spanishStandard: 'Se realizó cambio de sábanas y desinfección de baño. Se supervisó caminata de 20 min con bastón.',
+        },
       },
-      {
-        phrase: 'took care of everything',
-        ruleName: 'Clear task documentation',
-        category: 'missing',
-        plainWhy: 'Does not substantiate which authorized care tasks were completed during the 3-hour visit.',
-        plainFix: 'List tasks: assisted with bed linen change, cleaned bathroom fixtures, prepared lunch.',
-        suggestedReplacement: 'completed scheduled CFC homemaking and personal care tasks per plan',
-      },
-      {
-        phrase: 'normal routine',
-        ruleName: 'Routine care verification',
-        category: 'wording',
-        plainWhy: '"Normal routine" does not prove individual care was delivered according to the approved service plan.',
-        plainFix: 'Specify client mobility exercises and meal items.',
-        suggestedReplacement: 'conducted routine 20-minute indoor mobility exercise',
-      },
-    ],
-    suggestedText:
-      'Arrived at 9:00 AM. Assisted client with scheduled CFC homemaking tasks, including bed linen change, kitchen sanitization, and laundry assistance. Supervised client during [add duration] indoor mobility exercise using single-point cane. Client demonstrated steady gait with zero loss of balance.',
-    placeholders: ['[add duration]'],
-    questions: [
-      {
-        id: 'q1',
-        question: 'How long did Walter walk around the house, and did he use his prescribed cane?',
-        answer: 'Walked for 20 minutes in hallway using cane. No staggering.',
-        isAnswered: true,
-        voiceRecorded: false,
-      },
-      {
-        id: 'q2',
-        question: 'Which specific homemaking tasks were completed during this 3-hour shift?',
-        answer: 'Washed and folded two loads of laundry, disinfected kitchen counters, and made lunch.',
-        isAnswered: true,
-        voiceRecorded: false,
-      },
-    ],
-    attachments: [],
-    assignedReviewer: 'Maya R.',
-    inCaseload: true,
-    clientContext: {
-      authorizedHours: '18.0 hrs/week · CFC Community First Choice',
-      carePlanGoals: [
-        'Safe indoor ambulation with single-point cane',
-        'Independent living environment maintenance via homemaking assistance',
-        'Hydration and nutritious meal prep',
-      ],
-      lastThreeNotes: [
-        'Nov 15: Cleaned kitchen and assisted with shower transfer. Walter walked 15 min.',
-        'Nov 12: Prepared chicken soup for lunch. Assisted with light housekeeping.',
-        'Nov 10: Client in cheerful spirits. Practiced cane ambulation indoors.',
-      ],
-    },
-    timeline: [
-      { title: 'Note submitted', actor: 'Beth Hayes', time: 'Nov 17 · 12:05 PM' },
-      { title: 'Automatic check flagged 3 vague phrases', actor: 'System Rule R-01', time: 'Nov 17 · 12:06 PM' },
     ],
   },
   {
-    id: 'NOTE-103',
-    clientId: 'C-1006',
-    clientName: 'Josefina Ruiz',
-    clientAge: 72,
-    clientDob: 'Jan 22, 1954',
-    caregiverName: 'Luis Ruiz',
+    id: 'C-1006',
+    name: 'Josefina Ruiz',
+    maskedId: 'C-***6',
+    age: 72,
+    dob: 'Jan 22, 1954',
     program: 'HMA',
-    visitDate: 'Nov 17, 2026',
-    visitTime: '10:00 AM – 1:00 PM',
-    evvStatus: 'Verified',
-    evvDetails: 'Clock-in 10:01 AM · Clock-out 1:02 PM · GPS Match · Verified',
-    tasks: ['Delegated G-Tube Care', 'Medication Administration', 'Bed Bath'],
-    status: 'Urgent',
-    isUrgentSafety: true,
-    originalText:
-      'Client refused to let me help transfer, so I forced her to sit down in the chair and she fell against the wall, minor bruise on left elbow. Gave midday meds.',
-    flags: [
+    caregiver: 'Luis Ruiz',
+    notesNeedingWork: 1,
+    authorizedHours: '21.0 hrs/week · HMA Skilled Delegation',
+    carePlanGoals: ['Gastrostomy tube care and medication flush', 'Bed bath and skin inspection'],
+    lastThreeNotes: ['Nov 16: Midday meds given via G-tube at 11:30 AM.', 'Nov 15: Tube flushed with 30ml water.'],
+    shifts: [
       {
-        phrase: 'forced her to sit down',
-        ruleName: 'Mandatory Safety Rule: Physical force or restraint',
-        category: 'safety',
-        plainWhy: 'Physical force or non-consensual physical handling is strictly prohibited. State Medicaid critical incident investigation required.',
-        plainFix: 'Must NOT be rewritten. Requires immediate supervisor intervention.',
-        isUrgentSafety: true,
+        id: 'SH-301',
+        clientId: 'C-1006',
+        date: 'Today, Nov 17',
+        time: '10:00 AM – 1:00 PM',
+        hours: '3.0h',
+        caregiver: 'Luis Ruiz',
+        evvStatus: 'Verified',
+        noteStatus: 'Needs fix',
+        weekGroup: 'This week',
+        tasks: ['Delegated G-Tube Care', 'Medication administration', 'Bed bath'],
+        roughNote: 'Client refused to let me help transfer, so I forced her to sit down in the chair and she fell against the wall, minor bruise on left elbow. Gave midday meds.',
+        flags: [
+          { phrase: 'forced her to sit down', ruleName: 'Safety escalation: physical force', category: 'safety', plainWhy: 'Physical force is strictly reportable.', suggestedReplacement: '' },
+          { phrase: 'she fell against the wall', ruleName: 'Safety escalation: client fall', category: 'safety', plainWhy: 'Fall with injury requires 24h HCPF notification.', suggestedReplacement: '' },
+        ],
+        quickDetails: [],
+        isSafetyRisk: true,
+        attachments: [
+          { id: 'att-301', name: 'Elbow_Injury_Photo.jpg', type: 'Injury photo', size: '2.1 MB', uploadedBy: 'Luis Ruiz', uploadedAt: '1:05 PM' },
+        ],
+        refinedOutputs: {
+          narrativeStandard: '',
+          narrativeShort: '',
+          narrativeDetailed: '',
+          soapStandard: '',
+          bulletsStandard: '',
+          stateStandard: '',
+          spanishStandard: '',
+        },
       },
-      {
-        phrase: 'she fell against the wall, minor bruise',
-        ruleName: 'Mandatory Incident Escalation: Client Fall with Injury',
-        category: 'safety',
-        plainWhy: 'Any fall resulting in bruising, pain, or skin compromise requires a formal 24-hour state incident report.',
-        plainFix: 'Escalate to RN Supervisor immediately. Complete incident report form.',
-        isUrgentSafety: true,
-      },
-      {
-        phrase: 'Gave midday meds',
-        ruleName: 'Exact times for nursing delegation',
-        category: 'missing',
-        plainWhy: 'HMA delegated medications require exact time, route (G-tube), and water flush volume.',
-        plainFix: 'Record exact time and water flush ml.',
-      },
-    ],
-    suggestedText: '', // Empty because safety escalation blocks rewrite!
-    placeholders: [],
-    questions: [],
-    attachments: [
-      {
-        id: 'att-bruise',
-        name: 'Elbow_Bruise_Photo.jpg',
-        type: 'Wound/skin photo',
-        size: '1.8 MB',
-        uploadedBy: 'Luis Ruiz',
-        uploadedAt: 'Nov 17 · 1:04 PM',
-      },
-    ],
-    assignedReviewer: 'Maya R.',
-    inCaseload: true,
-    clientContext: {
-      authorizedHours: '21.0 hrs/week · HMA Skilled Nursing Delegation',
-      carePlanGoals: [
-        'Gastrostomy tube flushes and scheduled medication delivery',
-        'Daily skin inspection of G-tube insertion site and pressure areas',
-        'Bed bath and two-person mechanical transfer assistance',
-      ],
-      lastThreeNotes: [
-        'Nov 16: Administered midday meds at 11:30 AM via G-tube. Flushed with 30ml water. Dressing clean.',
-        'Nov 15: Morning feed administered. Stoma clean, no redness. Repositioned safely.',
-        'Nov 14: Meds given at 11:15 AM. Client tolerated bath and transfer well.',
-      ],
-    },
-    timeline: [
-      { title: 'Note submitted', actor: 'Luis Ruiz', time: 'Nov 17 · 1:05 PM' },
-      { title: 'CRITICAL SAFETY TRIGGER: Physical force & fall with injury detected', actor: 'System Rule R-02', time: 'Nov 17 · 1:05 PM' },
     ],
   },
   {
-    id: 'NOTE-104',
-    clientId: 'C-1002',
-    clientName: 'Eli Brandt',
-    clientAge: 19,
-    clientDob: 'Aug 11, 2007',
-    caregiverName: 'Karen Brandt',
+    id: 'C-1002',
+    name: 'Eli Brandt',
+    maskedId: 'C-***2',
+    age: 19,
+    dob: 'Aug 11, 2007',
     program: 'HCBS',
-    visitDate: 'Nov 17, 2026',
-    visitTime: '1:00 PM – 4:00 PM',
-    evvStatus: 'Exception',
-    evvDetails: 'Clock-out was 42 min after scheduled shift (requires reason code)',
-    tasks: ['Community Integration', 'Life Skills', 'Medication Reminder'],
-    status: 'Needs fix',
-    isUrgentSafety: false,
-    originalText: 'Fed client lunch and walked around, gave morning pills and did exercises.',
-    flags: [
+    caregiver: 'Karen Brandt',
+    notesNeedingWork: 2,
+    authorizedHours: '32.0 hrs/week · HCBS Supported Living',
+    carePlanGoals: ['Community safety awareness', 'Money handling and shopping'],
+    lastThreeNotes: ['Nov 16: Outing to King Soopers.', 'Nov 14: Vocabulary flashcards.'],
+    shifts: [
       {
-        phrase: 'lunch',
-        ruleName: 'Specific nutritional documentation',
-        category: 'missing',
-        plainWhy: 'State rules require identifying what meal was served to confirm nutritional adequacy.',
-        plainFix: 'Name the specific food items prepared.',
-        suggestedReplacement: 'lunch of [add meal items]',
-      },
-      {
-        phrase: 'walked around',
-        ruleName: 'Community goal tracking',
-        category: 'missing',
-        plainWhy: 'Specify location and duration to demonstrate care plan community integration goal.',
-        plainFix: 'Include duration and location.',
-        suggestedReplacement: 'supervised community walk for [add duration]',
-      },
-      {
-        phrase: 'morning pills',
-        ruleName: 'Specific medication identification',
-        category: 'missing',
-        plainWhy: 'Name of medication and scheduled time must be documented.',
-        plainFix: 'Specify medication name and administration time.',
-        suggestedReplacement: 'prompted scheduled [add medication name] at [add exact time]',
-      },
-    ],
-    suggestedText:
-      'Assisted Eli with lunch ([add meal items]) at [add lunch time]. Supervised community mobility walk for [add duration] around the neighborhood per community integration goal. Prompted scheduled medication ([add medication name]) at [add exact time] with water.',
-    placeholders: ['[add meal items]', '[add lunch time]', '[add duration]', '[add medication name]', '[add exact time]'],
-    questions: [
-      {
-        id: 'q1',
-        question: 'What specific food was prepared for Eli\'s lunch?',
-        answer: 'Turkey and avocado sandwich on wheat with sliced cantaloupe and milk.',
-        isAnswered: true,
-        voiceRecorded: false,
-      },
-      {
-        id: 'q2',
-        question: 'How long did you walk outside and where did you go?',
-        answer: 'Walked for 35 minutes along the greenway trail.',
-        isAnswered: true,
-        voiceRecorded: true,
-      },
-      {
-        id: 'q3',
-        question: 'Which specific medication was prompted and at what exact time?',
-        answer: 'Levothyroxine 50mcg at 1:15 PM with water.',
-        isAnswered: true,
-        voiceRecorded: false,
+        id: 'SH-401',
+        clientId: 'C-1002',
+        date: 'Today, Nov 17',
+        time: '1:00 PM – 4:00 PM',
+        hours: '3.0h',
+        caregiver: 'Karen Brandt',
+        evvStatus: 'Exception',
+        noteStatus: 'Needs fix',
+        weekGroup: 'This week',
+        tasks: ['Community integration', 'Life skills', 'Medication reminder'],
+        roughNote: 'Fed client lunch and walked around, gave morning pills and did exercises.',
+        flags: [
+          { phrase: 'lunch', ruleName: 'Nutritional documentation', category: 'missing', plainWhy: 'Name specific meal items.', suggestedReplacement: 'lunch of turkey sandwich and apples' },
+          { phrase: 'walked around', ruleName: 'Goal verification', category: 'missing', plainWhy: 'Include duration and location.', suggestedReplacement: 'supervised community walk for 35 minutes along trail' },
+          { phrase: 'morning pills', ruleName: 'Medication specifics', category: 'missing', plainWhy: 'Name medication and exact time.', suggestedReplacement: 'prompted Levothyroxine 50mcg at 1:15 PM with water' },
+        ],
+        quickDetails: [
+          { id: 'eq1', question: 'What was prepared for lunch?', answer: 'Turkey sandwich with sliced apples and milk' },
+          { id: 'eq2', question: 'How long was the walk and where?', answer: '35 minutes along greenway trail' },
+          { id: 'eq3', question: 'Which medication was given?', answer: 'Levothyroxine 50mcg at 1:15 PM with water' },
+        ],
+        attachments: [],
+        refinedOutputs: {
+          narrativeStandard: 'Assisted Eli with lunch (turkey sandwich, sliced apples, milk) at 1:00 PM per care plan schedule. Supervised community mobility walk for 35 minutes along greenway trail per community integration goal. Prompted scheduled medication (Levothyroxine 50mcg) at 1:15 PM with water; client self-administered without difficulty. Departed at 4:00 PM.',
+          narrativeShort: 'Assisted with lunch, 35 min community walk, and Levothyroxine reminder at 1:15 PM.',
+          narrativeDetailed: 'Assisted with lunch (turkey sandwich, sliced apples, milk) at 1:00 PM per care plan schedule. Supervised community mobility walk for 35 minutes along greenway trail per community integration goal. Prompted scheduled medication (Levothyroxine 50mcg) at 1:15 PM with water; client self-administered without difficulty. Departed at 4:00 PM.',
+          soapStandard: 'S: Client engaged.\nO: Lunch provided, 35 min trail walk, Levothyroxine at 1:15 PM.\nA: Good community tolerance.\nP: Continue daily outings.',
+          bulletsStandard: '• Meal: Turkey sandwich and apples.\n• Outing: 35 min walk along greenway.\n• Meds: Levothyroxine 50mcg at 1:15 PM.',
+          stateStandard: 'HCBS SUPPORTED LIVING: Community integration and medication reminder documented.',
+          spanishStandard: 'Asistió con almuerzo, caminata comunitaria de 35 min y recordatorio de medicamento a la 1:15 PM.',
+        },
       },
     ],
-    attachments: [
+  },
+  {
+    id: 'C-1005',
+    name: 'Aiden Park',
+    maskedId: 'C-***5',
+    age: 16,
+    dob: 'May 04, 2010',
+    program: 'HCBS',
+    caregiver: 'Grace Park',
+    notesNeedingWork: 0,
+    authorizedHours: '15.0 hrs/week · HCBS Mentorship',
+    carePlanGoals: ['Sensory regulation breathing protocols', 'Homework routine minimal resistance'],
+    lastThreeNotes: ['Nov 16: Practiced deep breathing exercises.', 'Nov 15: Outing to library.'],
+    shifts: [
+      // Sample C: Note with no problems, shown as "Ready to approve"
       {
-        id: 'att-goal',
-        name: 'Community_Goal_Tracking_Form.pdf',
-        type: 'Signed form',
-        size: '240 KB',
-        uploadedBy: 'Karen Brandt',
-        uploadedAt: 'Nov 17 · 4:50 PM',
+        id: 'SH-501',
+        clientId: 'C-1005',
+        date: 'Today, Nov 17',
+        time: '2:00 PM – 5:00 PM',
+        hours: '3.0h',
+        caregiver: 'Grace Park',
+        evvStatus: 'Verified',
+        noteStatus: 'Approved',
+        weekGroup: 'This week',
+        tasks: ['Community mentorship', 'Academic support'],
+        roughNote:
+          'Arrived at 2:00 PM. Aiden was alert and resting in study room. Guided sensory deep breathing exercise for 15 minutes before homework. Aiden completed 45 minutes of algebra homework with minimal verbal prompts. Client remained cooperative and focused throughout the shift. Departed at 5:00 PM.',
+        flags: [],
+        quickDetails: [],
+        attachments: [],
+        refinedOutputs: {
+          narrativeStandard:
+            'Arrived at 2:00 PM. Aiden was alert and resting in study room. Guided sensory deep breathing exercise for 15 minutes before homework. Aiden completed 45 minutes of algebra homework with minimal verbal prompts. Client remained cooperative and focused throughout the shift. Departed at 5:00 PM.',
+          narrativeShort: 'Guided 15 min breathing exercise; completed 45 min algebra homework cooperatively.',
+          narrativeDetailed: 'Arrived at 2:00 PM. Aiden was alert and resting in study room. Guided sensory deep breathing exercise for 15 minutes before homework. Aiden completed 45 minutes of algebra homework with minimal verbal prompts. Client remained cooperative and focused throughout the shift. Departed at 5:00 PM.',
+          soapStandard: 'S: Client engaged.\nO: 15 min breathing, 45 min math homework.\nA: Good emotional regulation.\nP: Continue daily routine.',
+          bulletsStandard: '• Sensory exercise: 15 min breathing.\n• Homework: 45 min algebra completed.\n• Response: Calm and cooperative.',
+          stateStandard: 'HCBS MENTORSHIP: Goal-directed academic support and sensory regulation verified.',
+          spanishStandard: 'Ejercicios de respiración de 15 min y 45 min de tareas completadas.',
+        },
       },
     ],
-    assignedReviewer: 'Maya R.',
-    inCaseload: true,
-    clientContext: {
-      authorizedHours: '32.0 hrs/week · HCBS Supported Living',
-      carePlanGoals: [
-        'Community safety awareness & neighborhood ambulation',
-        'Money handling and shopping skills',
-        'Nutrition and scheduled medication prompting',
-      ],
-      lastThreeNotes: [
-        'Nov 16: Outing to King Soopers. Eli selected 4 items independently with verbal prompts.',
-        'Nov 14: Assisted Eli with handwashing and snack prep. Worked on vocabulary flashcards.',
-        'Nov 12: Supervised safety during afternoon park outing. Positive mood throughout.',
-      ],
-    },
-    timeline: [
-      { title: 'Note submitted', actor: 'Karen Brandt', time: 'Nov 17 · 4:45 PM' },
-      { title: 'Automated check flagged 3 missing details', actor: 'System Rule R-01', time: 'Nov 17 · 4:46 PM' },
-    ],
-  },
-];
-
-// Initial Rules for Rules Tab
-const INITIAL_RULES: ComplianceRule[] = [
-  {
-    id: 'R-01',
-    name: 'Objective facts only (no emotional or judgmental words)',
-    description: 'Requires factual, observable descriptions rather than characterizations (e.g. difficult, stubborn, crazy).',
-    appliesTo: ['IHSS', 'CFC', 'HCBS', 'IRSS', 'HMA', 'Personal Care'],
-    severity: 'High',
-    exampleBad: 'Client was difficult and aggressive.',
-    exampleGood: 'Client raised voice and paced hallway for 15 minutes before accepting redirection.',
-    isActive: true,
-    source: 'Colorado 10 CCR 2505-10 § 8.510',
-    lastUpdatedBy: 'Dana W. (Admin)',
-    lastUpdatedAt: 'Nov 10, 2026',
-  },
-  {
-    id: 'R-02',
-    name: 'Safety escalation: physical force or non-consensual care',
-    description: 'Mandatory flagging of any phrasing indicating physical force, restriction, or non-consensual care.',
-    appliesTo: ['All Programs'],
-    severity: 'High',
-    exampleBad: 'I made her take her bath anyway.',
-    exampleGood: 'Client declined bath at 9:00 AM. Caregiver re-offered at 10:30 AM; client accepted.',
-    isActive: true,
-    source: 'State Medicaid Critical Incident Rule § 8.500',
-    lastUpdatedBy: 'Clinical Director',
-    lastUpdatedAt: 'Oct 28, 2026',
-  },
-  {
-    id: 'R-03',
-    name: 'Exact times for medications and nursing tasks',
-    description: 'Vague times (all day, all shift) are non-compliant for billable delegated nursing tasks.',
-    appliesTo: ['HMA', 'CNA'],
-    severity: 'Medium',
-    exampleBad: 'Gave meds during the morning.',
-    exampleGood: 'Administered 500mg Metformin orally with water at 8:30 AM per MAR.',
-    isActive: true,
-    source: 'Colorado Board of Nursing Chapter 13',
-    lastUpdatedBy: 'Tom O. (RN)',
-    lastUpdatedAt: 'Nov 02, 2026',
-  },
-  {
-    id: 'R-04',
-    name: 'Connect community outings to service plan goals',
-    description: 'Community integration activities must reference specific authorized goals in the individual service plan.',
-    appliesTo: ['IHSS', 'HCBS', 'IRSS'],
-    severity: 'Medium',
-    exampleBad: 'Went to the mall for fun.',
-    exampleGood: 'Accompanied client to local store to practice money counting and cashier interaction goal.',
-    isActive: true,
-    source: 'Department of Health Care Policy & Financing (HCPF)',
-    lastUpdatedBy: 'Compliance Lead',
-    lastUpdatedAt: 'Nov 12, 2026',
   },
 ];
 
 export const AuditPage: React.FC = () => {
-  const { showToast, addFeed, deIdentify, navigate } = useApp();
+  const { showToast, deIdentify } = useApp();
 
-  // Top Tabs: 'coach' (renamed from 'review') | 'new-note' | 'quality' | 'rules'
-  const [activeTab, setActiveTab] = useState<'coach' | 'new-note' | 'quality' | 'rules'>('coach');
+  // Top Tabs: 'coach' (Note Coach) | 'new-note' | 'quality' | 'rules'
+  const [activeTopTab, setActiveTopTab] = useState<'coach' | 'new-note' | 'quality' | 'rules'>('coach');
 
-  // Notes state
-  const [notes, setNotes] = useState<NoteRecord[]>(INITIAL_NOTES);
-  const [selectedNoteId, setSelectedNoteId] = useState<string>('NOTE-101');
-
-  // Column 1 Filters
+  // Client Selection & Search
+  const [selectedClientId, setSelectedClientId] = useState('C-1001');
   const [clientSearch, setClientSearch] = useState('');
-  const [notesAttentionFilter, setNotesAttentionFilter] = useState<'All' | 'Needs fix' | 'Urgent' | 'Waiting on caregiver' | 'Approved'>('All');
-  const [caseloadOnly, setCaseloadOnly] = useState(true);
+  const [clientStatusFilter, setClientStatusFilter] = useState<'All' | 'Needs fix' | 'Urgent' | 'Waiting on caregiver' | 'Approved'>('All');
+  const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
 
-  // Column 2 Note Input Area State
-  const [noteInputTab, setNoteInputTab] = useState<'caregiver' | 'paste' | 'upload'>('caregiver');
-  const [currentCaregiverText, setCurrentCaregiverText] = useState('');
+  // Shift Table State
+  const [selectedShiftId, setSelectedShiftId] = useState('SH-101');
+  const [isShiftTableExpanded, setIsShiftTableExpanded] = useState(false); // Collapsed by default when a shift is selected
+  const [shiftCaregiverFilter, setShiftCaregiverFilter] = useState('All');
+  const [shiftStatusFilter, setShiftStatusFilter] = useState('All');
+  const [batchSelectedShiftIds, setBatchSelectedShiftIds] = useState<string[]>([]);
+
+  // Editor Input Area State
+  const [editorTab, setEditorTab] = useState<'caregiver' | 'paste' | 'upload'>('caregiver');
+  const [roughText, setRoughText] = useState(CLIENTS_DATA[0].shifts[0].roughNote);
   const [pastedText, setPastedText] = useState('');
-  const [uploadedFile, setUploadedFile] = useState<{ name: string; size: string; transcript: string } | null>(null);
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [isDictating, setIsDictating] = useState(false);
-  const [activeHighlightPopover, setActiveHighlightPopover] = useState<FlagItem | null>(null);
 
-  // Column 3 Refinement Toolbar & State
+  // Popover for Underlined Problem Phrase
+  const [activeFlagPopover, setActiveFlagPopover] = useState<FlagItem | null>(null);
+
+  // Output Refinement Options
   const [refineFormat, setRefineFormat] = useState<'narrative' | 'soap' | 'bullets' | 'state'>('narrative');
   const [refineLength, setRefineLength] = useState<'short' | 'standard' | 'detailed'>('standard');
-  const [refineProgram, setRefineProgram] = useState<'IHSS' | 'CFC' | 'HCBS' | 'IRSS' | 'CNA' | 'HMA' | 'Personal Care'>('IHSS');
+  const [refineProgram, setRefineProgram] = useState('IHSS');
   const [refineLanguage, setRefineLanguage] = useState<'en' | 'es'>('en');
-  const [includeOptions, setIncludeOptions] = useState({
-    times: true,
-    response: true,
-    tasks: true,
-    followUp: true,
-  });
+
+  // Result Section State
+  const [hasRefined, setHasRefined] = useState(true); // Default true so demo shows result immediately on load
   const [isRefining, setIsRefining] = useState(false);
-  const [refineProgressText, setRefineProgressText] = useState('Checking rules… formatting…');
-  const [diffView, setDiffView] = useState<'clean' | 'diff'>('clean');
+  const [resultViewMode, setResultViewMode] = useState<'side-by-side' | 'refined-only' | 'show-changes'>('side-by-side');
   const [editableRefinedText, setEditableRefinedText] = useState('');
-  const [isEditingRefinedManually, setIsEditingRefinedManually] = useState(false);
-  const [amberBlanks, setAmberBlanks] = useState<Record<string, string>>({});
-  const [showQuestions, setShowQuestions] = useState(true);
-  const [questionsAnswerState, setQuestionsAnswerState] = useState<Record<string, string>>({});
-  const [showMoreActions, setShowMoreActions] = useState(false);
+  const [isEditingManually, setIsEditingManually] = useState(false);
 
-  // Supervisor Safety Override state
+  // Safety Escalation Modal & State
+  const [isIncidentModalOpen, setIsIncidentModalOpen] = useState(false);
   const [safetyOverrideDismissed, setSafetyOverrideDismissed] = useState(false);
-  const [showIncidentModal, setShowIncidentModal] = useState(false);
-  const [incidentTitle, setIncidentTitle] = useState('');
-  const [incidentSeverity, setIncidentSeverity] = useState('Critical - Safety Escalation');
 
-  // Details Drawer (Right edge collapsible)
-  const [showDetailsDrawer, setShowDetailsDrawer] = useState(false);
+  // Details & Audit Drawer (Right Edge)
+  const [isDetailsDrawerOpen, setIsDetailsDrawerOpen] = useState(false);
   const [detailsDrawerTab, setDetailsDrawerTab] = useState<'rules' | 'context' | 'history' | 'audit'>('rules');
 
-  // Responsive Stepper for Small Screens (1 -> 2 -> 3)
-  const [responsiveStep, setResponsiveStep] = useState<1 | 2 | 3>(1);
-
   // Floating Assistant Chat State
-  const [showAssistant, setShowAssistant] = useState(false);
-  const [assistantMessages, setAssistantMessages] = useState<
-    Array<{
-      sender: 'user' | 'assistant';
-      text: string;
-      source?: string;
-      actionButton?: { label: string; actionId: string };
-    }>
-  >([
-    {
-      sender: 'assistant',
-      text: 'Hello Maya! I am scoped to this visit note. I can help refine wording, verify Medicaid rules, or prepare state incident documentation.',
-    },
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const [assistantMessages, setAssistantMessages] = useState([
+    { sender: 'assistant', text: 'Hello! I am reviewing this shift note against Colorado Medicaid guidelines. Ask me a question or tap an action below.' },
   ]);
   const [assistantInput, setAssistantInput] = useState('');
-  const [pendingConfirmAction, setPendingConfirmAction] = useState<{
-    label: string;
-    description: string;
-    onConfirm: () => void;
-  } | null>(null);
+  const [pendingConfirmAction, setPendingConfirmAction] = useState<{ label: string; desc: string; onConfirm: () => void } | null>(null);
 
-  // Rules Tab state (preservation of Tab 4)
-  const [rulesList, setRulesList] = useState<ComplianceRule[]>(INITIAL_RULES);
-  const [showProgramSettings, setShowProgramSettings] = useState(false);
-  const [programRequirements, setProgramRequirements] = useState<Record<string, boolean>>({
-    IHSS: true,
-    CFC: true,
-    HCBS: true,
-    IRSS: true,
-    HMA: true,
-  });
+  // Active Client & Active Shift
+  const currentClient = useMemo(() => {
+    return CLIENTS_DATA.find((c) => c.id === selectedClientId) || CLIENTS_DATA[0];
+  }, [selectedClientId]);
 
-  // New Note Tab State (preservation of Tab 2)
-  const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4>(1);
-  const [wizardClientId, setWizardClientId] = useState('C-1001');
-  const [roughText, setRoughText] = useState('');
-  const [formattedWizardText, setFormattedWizardText] = useState('');
+  const currentShift = useMemo(() => {
+    return currentClient.shifts.find((s) => s.id === selectedShiftId) || currentClient.shifts[0];
+  }, [currentClient, selectedShiftId]);
 
-  // Active Note computation
-  const activeNote = useMemo(() => {
-    return notes.find((n) => n.id === selectedNoteId) || notes[0];
-  }, [notes, selectedNoteId]);
+  // When selected shift changes, update editor state
+  const handleSelectShift = (shift: ShiftRecord) => {
+    setSelectedShiftId(shift.id);
+    setRoughText(shift.roughNote);
+    setIsShiftTableExpanded(false);
+    setActiveFlagPopover(null);
+    setSafetyOverrideDismissed(false);
+    setRefineProgram(currentClient.program);
+    setHasRefined(shift.noteStatus === 'Refined' || shift.noteStatus === 'Approved' || shift.id === 'SH-101');
+    setIsEditingManually(false);
+  };
 
-  // Sync state whenever active note changes
-  useEffect(() => {
-    if (activeNote) {
-      setCurrentCaregiverText(activeNote.originalText);
-      setPastedText('');
-      setUploadedFile(null);
-      setSafetyOverrideDismissed(false);
-      setRefineProgram(activeNote.program);
-      setActiveHighlightPopover(null);
-      setIsEditingRefinedManually(false);
-      setAmberBlanks({});
+  // Switch client
+  const handleSelectClient = (client: ClientCoachItem) => {
+    setSelectedClientId(client.id);
+    const firstShift = client.shifts[0];
+    handleSelectShift(firstShift);
+  };
 
-      // Set initial answers for questions
-      const initialAnswers: Record<string, string> = {};
-      activeNote.questions.forEach((q) => {
-        initialAnswers[q.id] = q.answer || '';
-      });
-      setQuestionsAnswerState(initialAnswers);
-    }
-  }, [selectedNoteId]);
-
-  // Compute if note contains safety risk
-  const isSafetyRiskDetected = useMemo(() => {
+  // Determine if safety risk is active
+  const isSafetyRisk = useMemo(() => {
     if (safetyOverrideDismissed) return false;
-    const textToCheck = (noteInputTab === 'caregiver' ? currentCaregiverText : pastedText || currentCaregiverText).toLowerCase();
+    const text = (editorTab === 'caregiver' ? roughText : pastedText || roughText).toLowerCase();
     return (
-      textToCheck.includes('made her eat') ||
-      textToCheck.includes('forced') ||
-      textToCheck.includes('fell against') ||
-      textToCheck.includes('bruise') ||
-      textToCheck.includes('injury') ||
-      activeNote.isUrgentSafety
+      currentShift.isSafetyRisk ||
+      text.includes('made her eat anyway') ||
+      text.includes('forced') ||
+      text.includes('bruised her elbow') ||
+      text.includes('fell against')
     );
-  }, [currentCaregiverText, pastedText, noteInputTab, activeNote, safetyOverrideDismissed]);
+  }, [currentShift, roughText, pastedText, editorTab, safetyOverrideDismissed]);
 
-  // Generate simulated refined text based on chosen parameters
-  const generatedRefinedNote = useMemo(() => {
-    if (isSafetyRiskDetected) {
-      return '';
-    }
+  // Get refined text based on controls
+  const activeRefinedText = useMemo(() => {
+    if (isSafetyRisk) return '';
 
     if (refineLanguage === 'es') {
-      return 'A las 8:40 AM, la clienta declinó la avena ofrecida. La cuidadora esperó 15 minutos y brindó apoyo verbal con respeto, ofreciendo yogur y tostadas, los cuales la clienta aceptó favorablemente. Se brindó asistencia en higiene matutina y transferencias seguras con andador rodante. A las 9:05 AM, se recordó la toma de medicamento para la presión arterial con agua per plan de cuidado.';
+      return currentShift.refinedOutputs.spanishStandard;
     }
-
-    if (activeNote.clientId === 'C-1007') {
-      // Walter Hayes (CFC)
-      if (refineFormat === 'soap') {
-        return 'S: Client stated feeling well and ready for scheduled morning CFC care.\nO: Completed bed linen change and bathroom sanitization. Supervised 20-minute indoor mobility routine using prescribed cane.\nA: Client maintains functional indoor mobility and safe living environment.\nP: Continue scheduled CFC homemaking twice weekly.';
-      }
-      if (refineFormat === 'bullets') {
-        return '• Tasks performed: Bed linen change, bathroom sanitization, meal preparation, mobility supervision.\n• Client response: Cooperative, engaged, completed 20 min indoor ambulation without fatigue.\n• Observations: Steady gait with cane, clear living area free of trip hazards.\n• Follow-up: Continue scheduled CFC homemaking routine.';
-      }
-      if (refineFormat === 'state') {
-        return 'COLORADO CFC SERVICE DOCUMENTATION\nClient: Walter Hayes | Date: Nov 17, 2026 | Time: 9:00 AM – 12:00 PM\n1. Homemaking: Changed bed linens, disinfected kitchen surfaces, assisted with laundry.\n2. Mobility Supervision: Observed 20 min cane ambulation in hallway with steady gait.\n3. Client Response: Cooperative, alert, no discomfort reported.';
-      }
-      if (refineLength === 'short') {
-        return 'Assisted Walter with morning personal care and light homemaking tasks. Client ambulated safely indoors for 20 minutes with single-point cane; no pain reported.';
-      }
-      if (refineLength === 'detailed') {
-        return 'Visit conducted 9:00 AM – 12:00 PM per CFC authorization. Completed scheduled homemaking tasks: linen change, kitchen counter sanitization, and laundry assistance. Supervised client during mobility exercise: 20 minutes walking in hallway with single-point cane, maintaining steady gait. Checked pantry supplies and confirmed hydration. Client reported no discomfort.';
-      }
-      return 'Arrived at 9:00 AM. Assisted client with scheduled CFC homemaking and personal care tasks, including bed linen change and bathroom sanitization. Supervised client during 20-minute indoor mobility routine using prescribed cane. Client expressed satisfaction with care.';
-    }
-
-    if (activeNote.clientId === 'C-1002') {
-      // Eli Brandt (HCBS / IHSS) with amber blanks
-      const meal = amberBlanks['[add meal items]'] || questionsAnswerState['q1'] || '[add meal items]';
-      const duration = amberBlanks['[add duration]'] || questionsAnswerState['q2'] || '[add duration]';
-      const medName = amberBlanks['[add medication name]'] || questionsAnswerState['q3'] || '[add medication name]';
-      const exactTime = amberBlanks['[add exact time]'] || '1:15 PM';
-
-      if (refineFormat === 'soap') {
-        return `S: Client engaged positively and participated in meal selection.\nO: Assisted with lunch (${meal}). Supervised community walk for ${duration} per integration goal. Prompted ${medName} at ${exactTime}.\nA: Good community tolerance and independent life skill participation.\nP: Continue daily community walk and scheduled medication prompting.`;
-      }
-      if (refineFormat === 'bullets') {
-        return `• Tasks performed: Lunch preparation, community walk, medication prompting.\n• Meal & Nutrition: Provided ${meal}.\n• Community integration: Supervised walk for ${duration}.\n• Medication: Prompted ${medName} at ${exactTime} with water.`;
-      }
-      return `Assisted Eli with lunch (${meal}) per care plan schedule. Supervised community mobility walk for ${duration} in neighborhood per community integration goal. Prompted scheduled medication (${medName}) at ${exactTime} with water; client self-administered without difficulty.`;
-    }
-
-    // Default: Marisol Vega (IHSS)
-    const alternative = amberBlanks['[add alternative offered]'] || (questionsAnswerState['q1'] ? 'yogurt with sliced bananas' : '[add alternative offered]');
 
     if (refineFormat === 'soap') {
-      return `S: Client stated lack of appetite for oatmeal at 8:40 AM.\nO: Vital tasks completed: morning hygiene, safe transfers with rolling walker, meal preparation. Client accepted ${alternative} at 8:55 AM. Med reminder at 9:05 AM.\nA: Nutrition achieved with verbal encouragement; no physical prompting required.\nP: Continue offering alternative breakfast choices and remind morning medications at scheduled 9:00 AM window.`;
+      return currentShift.refinedOutputs.soapStandard;
     }
     if (refineFormat === 'bullets') {
-      return `• Tasks performed: Meal preparation, morning hygiene, transfer assistance with rolling walker, medication reminder.\n• Client response: Declined oatmeal at 8:40 AM; accepted ${alternative} at 8:55 AM upon verbal re-offering.\n• Observations: Ambulating safely with walker. Alert and oriented.\n• Follow-up: Report breakfast food preferences to case manager.`;
+      return currentShift.refinedOutputs.bulletsStandard;
     }
     if (refineFormat === 'state') {
-      return `COLORADO IHSS VISIT DOCUMENTATION\nClient: Marisol Vega | Date: Nov 17, 2026 | Time: 8:00 AM – 11:30 AM\n1. Attendant Care: Assisted with personal hygiene and rolling walker transfers.\n2. Nutrition: Client declined initial breakfast item at 8:40 AM; accepted ${alternative} at 8:55 AM.\n3. Medication Reminder: Prompted client for morning blood pressure medication at 9:05 AM per care plan.\n4. Client Status: Calm, ambulating safely.`;
+      return currentShift.refinedOutputs.stateStandard;
     }
+
     if (refineLength === 'short') {
-      return `Client declined breakfast at 8:40 AM. Caregiver offered ${alternative} after 15 minutes; client accepted. Morning blood pressure medication was reminded per care plan at 9:05 AM.`;
+      return currentShift.refinedOutputs.narrativeShort;
     }
     if (refineLength === 'detailed') {
-      return `Client was awake and sitting in armchair at 8:02 AM. Caregiver prepared breakfast of oatmeal; client verbally declined at 8:40 AM. Caregiver implemented verbal encouragement techniques without physical prompting, re-offering alternative light options at 8:55 AM. Client accepted ${alternative}. Morning hypertension medication reminder provided at 9:05 AM; client self-administered with water. Assisted with oral hygiene and transfers to living room with rolling walker.`;
+      return currentShift.refinedOutputs.narrativeDetailed;
     }
 
-    return `At 8:40 AM, client declined offered oatmeal. Caregiver waited 15 minutes and verbally encouraged client, offering ${alternative}, which client accepted. Assisted client with morning hygiene and transfer using rolling walker. At 9:05 AM, caregiver reminded client to take scheduled blood pressure medication per physician orders with water.`;
-  }, [
-    isSafetyRiskDetected,
-    refineLanguage,
-    activeNote.clientId,
-    refineFormat,
-    refineLength,
-    amberBlanks,
-    questionsAnswerState,
-  ]);
+    return currentShift.refinedOutputs.narrativeStandard;
+  }, [currentShift, isSafetyRisk, refineLanguage, refineFormat, refineLength]);
 
-  // Sync editable refined text whenever generated note changes
-  useEffect(() => {
-    setEditableRefinedText(generatedRefinedNote);
-  }, [generatedRefinedNote]);
+  // Sync manual editable text
+  React.useEffect(() => {
+    setEditableRefinedText(activeRefinedText);
+  }, [activeRefinedText]);
 
-  // Handle "Refine Note" Action
-  const handleTriggerRefine = () => {
+  // Handle Trigger Refine Action
+  const handleRefineNote = () => {
     setIsRefining(true);
-    setRefineProgressText('Checking state Medicaid rules… formatting note…');
     setTimeout(() => {
       setIsRefining(false);
+      setHasRefined(true);
       showToast('Note refined per Colorado Medicaid objective care standards.');
-      // Add version history entry
-      setNotes((prev) =>
-        prev.map((n) =>
-          n.id === activeNote.id
-            ? {
-                ...n,
-                timeline: [
-                  {
-                    title: `AI Note Coach refined (${refineFormat}, ${refineLength})`,
-                    actor: 'AI Care Note Coach',
-                    time: 'Just now',
-                    note: `Applied ${refineProgram} rules with zero invent-fact policy.`,
-                  },
-                  ...n.timeline,
-                ],
-              }
-            : n
-        )
-      );
-    }, 900);
+    }, 600);
   };
 
-  // Replace a problem phrase directly
-  const handleUseSuggestedWording = (flag: FlagItem) => {
-    if (!flag.suggestedReplacement) return;
-    setCurrentCaregiverText((prev) => prev.replace(flag.phrase, flag.suggestedReplacement!));
-    setActiveHighlightPopover(null);
-    showToast(`Replaced "${flag.phrase}" with compliant phrasing.`);
+  // Replace problem phrase inline
+  const handleReplacePhrase = (flag: FlagItem) => {
+    setRoughText((prev) => prev.replace(flag.phrase, flag.suggestedReplacement));
+    setActiveFlagPopover(null);
+    showToast(`Replaced "${flag.phrase}" with compliant wording.`);
   };
 
-  // Assistant Question/Command Runner
-  const sendAssistantMessage = (userPrompt: string) => {
-    const newMsgList = [...assistantMessages, { sender: 'user' as const, text: userPrompt }];
-    setAssistantMessages(newMsgList);
+  // Assistant messaging runner
+  const handleSendAssistant = (promptText: string) => {
+    const list = [...assistantMessages, { sender: 'user', text: promptText }];
+    setAssistantMessages(list);
     setAssistantInput('');
 
     setTimeout(() => {
-      const q = userPrompt.toLowerCase();
-      if (q.includes('why') || q.includes('flag') || q.includes('rule')) {
+      const q = promptText.toLowerCase();
+      if (q.includes('why') || q.includes('flag') || q.includes('grumpy')) {
         setAssistantMessages((prev) => [
           ...prev,
           {
             sender: 'assistant',
-            text: `Under Colorado rule 10 CCR 2505-10 § 8.510, notes cannot include subjective words like "difficult" or "acting up". State auditors require observable descriptions. In addition, physical force language must be reviewed by a clinical supervisor.`,
-            source: 'Rule R-01 & R-02 (Colorado Medicaid)',
-            actionButton: { label: '✨ Refine note now', actionId: 'refine' },
+            text: 'Under Colorado 10 CCR 2505-10 § 8.510, notes cannot include subjective words like "grumpy" or "difficult". State auditors reject notes that reflect caregiver perception rather than observable facts.',
           },
         ]);
-      } else if (q.includes('incident') || q.includes('safety') || q.includes('fall')) {
+      } else if (q.includes('incident') || q.includes('safety') || q.includes('force')) {
         setAssistantMessages((prev) => [
           ...prev,
           {
             sender: 'assistant',
-            text: `Potential reportable incident identified. Per state guidelines, critical incidents including physical intervention or client injury require a 24-hour notification to HCPF.`,
-            source: 'State Medicaid Critical Incident § 8.500',
-            actionButton: { label: '🚨 Open incident report', actionId: 'incident' },
+            text: 'Physical force or non-consensual care requires immediate clinical review and mandatory 24-hour HCPF incident escalation.',
           },
         ]);
       } else {
@@ -795,1270 +722,927 @@ export const AuditPage: React.FC = () => {
           ...prev,
           {
             sender: 'assistant',
-            text: `Scoped to ${activeNote.clientName} (Visit ${activeNote.visitDate}). The care plan authorizes ${activeNote.clientContext.authorizedHours}. Note has ${activeNote.flags.length} flagged compliance items.`,
-            source: 'Verified Caseload Database',
-            actionButton: { label: '📤 Send to caregiver for approval', actionId: 'send_cg' },
+            text: `Scoped to ${currentClient.name} (${currentShift.date}, ${currentShift.time}). All tasks verified through EVV. Ready to dispatch draft to caregiver.`,
           },
         ]);
       }
-    }, 700);
+    }, 500);
   };
 
-  const handleAssistantAction = (actionId: string) => {
-    if (actionId === 'refine') {
-      setPendingConfirmAction({
-        label: 'Run AI Note Refinement',
-        description: 'Refine caregiver note into compliant documentation using Colorado Medicaid standards.',
-        onConfirm: () => {
-          handleTriggerRefine();
-          setPendingConfirmAction(null);
-        },
-      });
-    } else if (actionId === 'incident') {
-      setPendingConfirmAction({
-        label: 'Open Critical Incident Report',
-        description: `Create mandatory 24-hour HCPF incident case for ${activeNote.clientName}.`,
-        onConfirm: () => {
-          setShowIncidentModal(true);
-          setPendingConfirmAction(null);
-        },
-      });
-    } else if (actionId === 'send_cg') {
-      setPendingConfirmAction({
-        label: 'Send Refined Draft to Caregiver',
-        description: `Dispatch SMS/App push to ${activeNote.caregiverName} requesting digital confirmation.`,
-        onConfirm: () => {
-          showToast(`Refined draft sent to ${activeNote.caregiverName} for mobile confirmation.`);
-          setPendingConfirmAction(null);
-        },
-      });
-    }
-  };
-
-  // Filtered clients for Column 1
+  // Filtered clients list
   const filteredClients = useMemo(() => {
-    return notes.filter((n) => {
-      if (caseloadOnly && !n.inCaseload) return false;
-      if (notesAttentionFilter !== 'All' && n.status !== notesAttentionFilter) return false;
+    return CLIENTS_DATA.filter((client) => {
+      if (clientStatusFilter === 'Needs fix' && client.notesNeedingWork === 0) return false;
+      if (clientStatusFilter === 'Urgent' && client.id !== 'C-1006' && client.id !== 'C-1001') return false;
       if (clientSearch.trim()) {
         const q = clientSearch.toLowerCase();
-        return n.clientName.toLowerCase().includes(q) || n.caregiverName.toLowerCase().includes(q) || n.program.toLowerCase().includes(q);
+        return client.name.toLowerCase().includes(q) || client.program.toLowerCase().includes(q);
       }
       return true;
     });
-  }, [notes, caseloadOnly, notesAttentionFilter, clientSearch]);
+  }, [clientSearch, clientStatusFilter]);
+
+  // Grouped shifts for selected client
+  const groupedShifts = useMemo(() => {
+    let list = currentClient.shifts;
+    if (shiftCaregiverFilter !== 'All') {
+      list = list.filter((s) => s.caregiver.includes(shiftCaregiverFilter));
+    }
+    if (shiftStatusFilter !== 'All') {
+      list = list.filter((s) => s.noteStatus === shiftStatusFilter);
+    }
+
+    const groups: Record<string, ShiftRecord[]> = {
+      'This week': [],
+      'Last week': [],
+      'Two weeks ago': [],
+    };
+
+    list.forEach((s) => {
+      if (groups[s.weekGroup]) {
+        groups[s.weekGroup].push(s);
+      }
+    });
+
+    return groups;
+  }, [currentClient, shiftCaregiverFilter, shiftStatusFilter]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 font-sans text-[var(--text)]">
       
       {/* ========================================================================= */}
-      {/* 1. TOP HEADER & TAB BAR */}
+      {/* 1. TOP HEADER & BREADCRUMB                                                */}
       {/* ========================================================================= */}
-      <div className="space-y-2">
+      <div className="space-y-1.5 border-b border-[var(--border)] pb-3">
         {/* Breadcrumb Trail */}
-        <nav aria-label="Breadcrumb" className="text-[12px] font-normal text-[var(--text-muted)] flex items-center gap-1.5">
-          <span className="hover:text-[var(--text)] cursor-pointer" onClick={() => setActiveTab('coach')}>
+        <nav aria-label="Breadcrumb" className="text-[12px] text-[var(--text-muted)] flex items-center gap-1.5">
+          <span className="hover:text-[var(--text)] cursor-pointer" onClick={() => setActiveTopTab('coach')}>
             Care Notes
           </span>
           <span>›</span>
-          <span className="font-semibold text-[var(--text)] capitalize">
-            {activeTab === 'coach' ? 'Note Coach' : activeTab === 'new-note' ? 'New Note' : activeTab === 'quality' ? 'Quality Reports' : 'Rules'}
+          <span className="font-semibold text-[var(--text)]">
+            {activeTopTab === 'coach' ? 'Note Coach' : activeTopTab === 'new-note' ? 'New Note' : activeTopTab === 'quality' ? 'Quality Reports' : 'Rules'}
           </span>
-          {activeTab === 'coach' && activeNote && (
+          {activeTopTab === 'coach' && (
             <>
               <span>›</span>
-              <span className="text-[var(--text)] font-semibold truncate max-w-[200px]">
-                {deIdentify(activeNote.clientName)}
-              </span>
+              <span className="text-[var(--text)] font-semibold">{deIdentify(currentClient.name)}</span>
             </>
           )}
         </nav>
 
         {/* Title, Subtitle & 4 Tabs */}
-        <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-3 border-b border-[var(--border)] pb-3">
+        <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-[28px] font-bold text-[var(--text)] leading-tight">Care Notes</h1>
-              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[var(--green-100)] text-[var(--green-900)] border border-[#CDE0C6]">
-                AI Workbench
-              </span>
-            </div>
-            <p className="text-[14px] font-normal text-[var(--text-muted)] mt-0.5">
-              {activeTab === 'coach' && 'AI-assisted care note refinement, Medicaid rule compliance, and caregiver coaching.'}
-              {activeTab === 'new-note' && 'Write or dictate a note for a client.'}
-              {activeTab === 'quality' && 'How well notes are meeting state compliance rules.'}
-              {activeTab === 'rules' && 'What the system checks for across state programs.'}
+            <h1 className="text-[28px] font-bold text-[var(--text)] leading-tight">Care Notes</h1>
+            <p className="text-[14px] text-[var(--text-muted)] mt-0.5">
+              {activeTopTab === 'coach' && 'Review shift notes, resolve missing details, and coach caregivers on objective Medicaid documentation.'}
+              {activeTopTab === 'new-note' && 'Create and submit a clinical note directly.'}
+              {activeTopTab === 'quality' && 'Overview of Medicaid documentation first-pass rate.'}
+              {activeTopTab === 'rules' && 'Configured program rules and wording guidelines.'}
             </p>
           </div>
 
-          {/* 4 Simple Tabs */}
-          <div className="flex items-center bg-[var(--card)] border border-[var(--border)] rounded-[8px] p-0.5 h-[36px] shrink-0">
-            <button
-              type="button"
-              onClick={() => setActiveTab('coach')}
-              className={`h-[30px] px-3.5 rounded-[6px] text-[12px] font-semibold transition ${
-                activeTab === 'coach'
-                  ? 'bg-[var(--green-700)] text-white shadow-xs'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-              }`}
-            >
-              Note Coach
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('new-note')}
-              className={`h-[30px] px-3.5 rounded-[6px] text-[12px] font-semibold transition ${
-                activeTab === 'new-note'
-                  ? 'bg-[var(--green-700)] text-white shadow-xs'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-              }`}
-            >
-              New Note
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('quality')}
-              className={`h-[30px] px-3.5 rounded-[6px] text-[12px] font-semibold transition ${
-                activeTab === 'quality'
-                  ? 'bg-[var(--green-700)] text-white shadow-xs'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-              }`}
-            >
-              Quality Reports
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('rules')}
-              className={`h-[30px] px-3.5 rounded-[6px] text-[12px] font-semibold transition ${
-                activeTab === 'rules'
-                  ? 'bg-[var(--green-700)] text-white shadow-xs'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-              }`}
-            >
-              Rules
-            </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {/* 4 Tabs */}
+            <div className="flex items-center bg-[var(--card)] border border-[var(--border)] rounded-[8px] p-0.5 h-[36px]">
+              <button
+                type="button"
+                onClick={() => setActiveTopTab('coach')}
+                className={`h-[30px] px-3.5 rounded-[6px] text-[13px] font-semibold transition ${
+                  activeTopTab === 'coach' ? 'bg-[var(--green-700)] text-white shadow-2xs' : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+                }`}
+              >
+                Note Coach
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTopTab('new-note')}
+                className={`h-[30px] px-3.5 rounded-[6px] text-[13px] font-semibold transition ${
+                  activeTopTab === 'new-note' ? 'bg-[var(--green-700)] text-white shadow-2xs' : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+                }`}
+              >
+                New Note
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTopTab('quality')}
+                className={`h-[30px] px-3.5 rounded-[6px] text-[13px] font-semibold transition ${
+                  activeTopTab === 'quality' ? 'bg-[var(--green-700)] text-white shadow-2xs' : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+                }`}
+              >
+                Quality Reports
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTopTab('rules')}
+                className={`h-[30px] px-3.5 rounded-[6px] text-[13px] font-semibold transition ${
+                  activeTopTab === 'rules' ? 'bg-[var(--green-700)] text-white shadow-2xs' : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+                }`}
+              >
+                Rules
+              </button>
+            </div>
+
+            {/* Small Details & Audit Icon Button in Page Header */}
+            {activeTopTab === 'coach' && (
+              <button
+                type="button"
+                onClick={() => setIsDetailsDrawerOpen(true)}
+                title="Details & Audit Log"
+                className="w-9 h-9 min-h-[36px] min-w-[36px] rounded-[8px] border border-[var(--border)] bg-[var(--card)] text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[#F0F2ED] transition flex items-center justify-center shadow-2xs"
+              >
+                <svg className="w-4 h-4 text-[var(--green-700)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
       </div>
 
       {/* ========================================================================= */}
-      {/* 2. TAB 1: AI CARE NOTE COACH WORKBENCH (3-COLUMN LAYOUT) */}
+      {/* 2. NOTE COACH: TWO-AREA WORKBENCH (LEFT 260px + MAIN WHITE CARD)          */}
       {/* ========================================================================= */}
-      {activeTab === 'coach' && (
-        <div className="space-y-3">
+      {activeTopTab === 'coach' && (
+        <div className="flex flex-col lg:flex-row gap-4 items-start">
           
-          {/* Top Control Bar with Responsive Stepper & Details Drawer Button */}
-          <div className="flex items-center justify-between gap-3 bg-[var(--card)] border border-[var(--border)] rounded-[10px] p-2.5 shadow-2xs">
-            {/* Mobile / Tablet Step Switcher */}
-            <div className="flex items-center gap-1.5 lg:hidden">
-              <span className="text-[11px] font-semibold text-[var(--text-muted)]">Step:</span>
-              <button
-                type="button"
-                onClick={() => setResponsiveStep(1)}
-                className={`px-2 py-1 rounded text-[11px] font-semibold ${
-                  responsiveStep === 1 ? 'bg-[var(--green-700)] text-white' : 'bg-stone-100 text-stone-700'
-                }`}
-              >
-                1. Client
-              </button>
-              <button
-                type="button"
-                onClick={() => setResponsiveStep(2)}
-                className={`px-2 py-1 rounded text-[11px] font-semibold ${
-                  responsiveStep === 2 ? 'bg-[var(--green-700)] text-white' : 'bg-stone-100 text-stone-700'
-                }`}
-              >
-                2. Note & Visit
-              </button>
-              <button
-                type="button"
-                onClick={() => setResponsiveStep(3)}
-                className={`px-2 py-1 rounded text-[11px] font-semibold ${
-                  responsiveStep === 3 ? 'bg-[var(--green-700)] text-white' : 'bg-stone-100 text-stone-700'
-                }`}
-              >
-                3. Refined
-              </button>
-            </div>
-
-            {/* Desktop Workbench Label */}
-            <div className="hidden lg:flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
-              <span className="w-2 h-2 rounded-full bg-[var(--green-700)]"></span>
-              <span className="font-semibold text-[var(--text)]">AI Note Coach Workbench</span>
-              <span>· Three-column flow from left to right</span>
-            </div>
-
-            {/* Right Buttons: Details Drawer & Assistant Launcher */}
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowDetailsDrawer(true)}
-                className="min-h-[30px] px-3 rounded-[6px] border border-[var(--border)] bg-white text-[12px] font-semibold text-[var(--text)] hover:bg-[#F0F2ED] transition flex items-center gap-1.5 shadow-2xs"
-              >
-                <svg className="w-3.5 h-3.5 text-[var(--green-700)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span>Details & Audit</span>
-              </button>
-            </div>
-          </div>
-
-          {/* 3 COLUMNS CONTAINER */}
-          <div className="flex flex-col lg:flex-row gap-4 items-start">
+          {/* --------------------------------------------------------------------- */}
+          {/* LEFT AREA (260px, collapsible): CLIENT LIST                           */}
+          {/* --------------------------------------------------------------------- */}
+          <div className={`w-full lg:w-[260px] shrink-0 bg-[var(--card)] border border-[var(--border)] rounded-[12px] shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden transition-all ${
+            isLeftPanelCollapsed ? 'lg:w-[48px]' : 'lg:w-[260px]'
+          }`}>
             
-            {/* ------------------------------------------------------------------- */}
-            {/* COLUMN 1: "1. Choose client" (narrow, 280px)                        */}
-            {/* ------------------------------------------------------------------- */}
-            <div className={`w-full lg:w-[280px] shrink-0 bg-[var(--card)] border border-[var(--border)] rounded-[12px] shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden flex flex-col ${
-              responsiveStep !== 1 ? 'hidden lg:flex' : 'flex'
-            }`}>
-              {/* Header */}
-              <div className="p-3.5 border-b border-[var(--border)] space-y-2 bg-[var(--card)]">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-[14px] font-bold text-[var(--text)]">1. Choose client</h3>
-                  <button
-                    type="button"
-                    onClick={() => setCaseloadOnly(!caseloadOnly)}
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition ${
-                      caseloadOnly ? 'bg-[var(--green-100)] text-[var(--green-900)] border-[#CDE0C6]' : 'bg-stone-100 text-stone-600 border-stone-200'
-                    }`}
-                  >
-                    {caseloadOnly ? 'My Caseload' : 'All Clients'}
-                  </button>
-                </div>
+            {/* Collapse Toggle Bar */}
+            <div className="p-3 border-b border-[var(--border)] flex items-center justify-between">
+              {!isLeftPanelCollapsed && (
+                <span className="text-[12px] font-semibold text-[var(--text)]">Clients</span>
+              )}
+              <button
+                type="button"
+                onClick={() => setIsLeftPanelCollapsed(!isLeftPanelCollapsed)}
+                title={isLeftPanelCollapsed ? 'Expand client list' : 'Collapse client list'}
+                className="text-[var(--text-muted)] hover:text-[var(--text)] text-[12px]"
+              >
+                {isLeftPanelCollapsed ? '→' : '←'}
+              </button>
+            </div>
+
+            {!isLeftPanelCollapsed && (
+              <div className="p-3 space-y-2 border-b border-[var(--border)]">
+                {/* Single Status Filter Dropdown */}
+                <select
+                  value={clientStatusFilter}
+                  onChange={(e) => setClientStatusFilter(e.target.value as typeof clientStatusFilter)}
+                  className="w-full h-[32px] px-2 text-[12px] bg-[#F7F7F4] border border-[var(--border)] rounded-[6px] text-[var(--text)] focus:outline-none"
+                >
+                  <option value="All">All statuses</option>
+                  <option value="Needs fix">Needs fix</option>
+                  <option value="Urgent">Urgent</option>
+                  <option value="Waiting on caregiver">Waiting on caregiver</option>
+                  <option value="Approved">Approved</option>
+                </select>
 
                 {/* Search Box */}
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={clientSearch}
-                    onChange={(e) => setClientSearch(e.target.value)}
-                    placeholder="Search client, caregiver..."
-                    className="w-full h-[32px] bg-[#F7F7F4] border border-[var(--border)] rounded-[6px] pl-7 pr-2.5 text-[12px] text-[var(--text)] focus:outline-none focus:ring-1 focus:ring-[var(--green-700)]"
-                  />
-                  <span className="absolute left-2 top-2 text-[11px] text-[var(--text-muted)]">🔍</span>
-                </div>
+                <input
+                  type="text"
+                  value={clientSearch}
+                  onChange={(e) => setClientSearch(e.target.value)}
+                  placeholder="Search client…"
+                  className="w-full h-[32px] px-2.5 text-[12px] bg-[#F7F7F4] border border-[var(--border)] rounded-[6px] text-[var(--text)] focus:outline-none"
+                />
               </div>
+            )}
 
-              {/* Client List */}
-              <div className="divide-y divide-[var(--border)] overflow-y-auto max-h-[500px] flex-1">
-                {filteredClients.map((item) => {
-                  const isSelected = activeNote.id === item.id;
+            {!isLeftPanelCollapsed && (
+              <div className="divide-y divide-[var(--border)] max-h-[580px] overflow-y-auto">
+                {filteredClients.map((client) => {
+                  const isSelected = client.id === currentClient.id;
                   return (
                     <div
-                      key={item.id}
-                      onClick={() => {
-                        setSelectedNoteId(item.id);
-                        setResponsiveStep(2);
-                      }}
-                      title={`Masked ID: ${item.clientId}`}
+                      key={client.id}
+                      onClick={() => handleSelectClient(client)}
+                      title={`Masked ID: ${client.maskedId}`}
                       className={`p-3 cursor-pointer transition flex flex-col gap-1 ${
                         isSelected
-                          ? 'bg-[var(--green-100)] border-l-4 border-l-[var(--green-700)]'
-                          : 'hover:bg-[#F9FAF8]'
+                          ? 'bg-[var(--green-100)] text-[var(--green-900)] font-medium border-l-4 border-l-[var(--green-700)]'
+                          : 'hover:bg-[#F9FAF8] text-[var(--text)]'
                       }`}
                     >
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="text-[13px] font-bold text-[var(--text)] truncate">
-                          {deIdentify(item.clientName)}
-                        </span>
-                        <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-white/70 border border-stone-200 text-stone-700">
-                          {item.program}
+                      <div className="flex items-center justify-between">
+                        <span className="text-[13px] font-semibold truncate">{deIdentify(client.name)}</span>
+                        <span className="text-[10px] font-medium px-1.5 py-0.2 rounded bg-white/80 border border-stone-200 text-stone-700">
+                          {client.program}
                         </span>
                       </div>
-
-                      <div className="text-[11px] text-[var(--text-muted)] flex items-center justify-between">
-                        <span>CG: {deIdentify(item.caregiverName)}</span>
-                        <span className="text-[10px] font-mono text-stone-400">
-                          {item.clientId}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center justify-between pt-1">
-                        <span
-                          className={`text-[10px] font-semibold px-2 py-0.2 rounded-full ${
-                            item.status === 'Urgent'
-                              ? 'bg-rose-50 text-rose-800 border border-rose-200'
-                              : item.status === 'Needs fix'
-                              ? 'bg-amber-50 text-amber-800 border border-amber-200'
-                              : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                          }`}
-                        >
-                          {item.status === 'Urgent' ? '1 urgent issue' : item.status === 'Needs fix' ? `${item.flags.length} needs fix` : 'Approved'}
-                        </span>
-                        <span className="text-[10px] text-[var(--text-muted)]">{item.visitDate}</span>
+                      <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)]">
+                        <span>{client.maskedId}</span>
+                        {client.notesNeedingWork > 0 ? (
+                          <span className="text-amber-800 font-medium">
+                            {client.notesNeedingWork} {client.notesNeedingWork === 1 ? 'note' : 'notes'} needing work
+                          </span>
+                        ) : (
+                          <span className="text-emerald-700">All up to date</span>
+                        )}
                       </div>
                     </div>
                   );
                 })}
               </div>
+            )}
+          </div>
 
-              {/* Bottom Shortcut: Notes Needing Attention Filter */}
-              <div className="p-3 border-t border-[var(--border)] bg-[#F7F7F4] space-y-1.5">
-                <div className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
-                  Notes needing attention:
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {(['All', 'Needs fix', 'Urgent', 'Waiting on caregiver', 'Approved'] as const).map((st) => (
-                    <button
-                      key={st}
-                      type="button"
-                      onClick={() => setNotesAttentionFilter(st)}
-                      className={`px-2 py-0.5 rounded text-[10px] font-semibold transition ${
-                        notesAttentionFilter === st
-                          ? 'bg-[var(--green-700)] text-white'
-                          : 'bg-white border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]'
-                      }`}
-                    >
-                      {st}
-                    </button>
-                  ))}
-                </div>
+          {/* --------------------------------------------------------------------- */}
+          {/* MAIN AREA: ONE WHITE CARD WITH VERTICAL FLOW                          */}
+          {/* --------------------------------------------------------------------- */}
+          <div className="flex-1 min-w-0 bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-6 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-6">
+            
+            {/* 1. CLIENT HEADER: ONE LINE */}
+            <div className="pb-4 border-b border-[var(--border)] flex flex-wrap items-center justify-between gap-3 text-[13px]">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <span className="text-[16px] font-bold text-[var(--text)]">{deIdentify(currentClient.name)}</span>
+                <span className="text-[var(--text-muted)]">·</span>
+                <span className="text-[var(--text-muted)]">{currentClient.maskedId}</span>
+                <span className="text-[var(--text-muted)]">·</span>
+                <span className="text-[var(--text-muted)]">Age {currentClient.age}</span>
+                <span className="text-[var(--text-muted)]">·</span>
+                <span className="font-semibold text-[var(--green-700)]">{currentClient.program}</span>
+                <span className="text-[var(--text-muted)]">·</span>
+                <span className="text-[var(--text-muted)]">Caregiver: <strong className="text-[var(--text)]">{deIdentify(currentClient.caregiver)}</strong></span>
               </div>
+              <span className="text-[11px] text-[var(--text-muted)] flex items-center gap-1">
+                <span>🔒 Access logged</span>
+              </span>
             </div>
 
-            {/* ------------------------------------------------------------------- */}
-            {/* COLUMN 2: "2. Choose visit and add the note" (main area, flex-1)    */}
-            {/* ------------------------------------------------------------------- */}
-            <div className={`flex-1 min-w-0 bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-4 ${
-              responsiveStep !== 2 ? 'hidden lg:block' : 'block'
-            }`}>
-              
-              {/* Column 2 Header */}
-              <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
-                <div>
-                  <h3 className="text-[15px] font-bold text-[var(--text)]">2. Choose visit and add the note</h3>
-                  <p className="text-[12px] text-[var(--text-muted)] mt-0.5">Select visit record, verify caregiver submission, and flag compliance phrasing</p>
-                </div>
-                <span className="text-[11px] font-semibold text-[var(--text-muted)] flex items-center gap-1">
-                  <span>🔒 Access logged</span>
-                </span>
-              </div>
-
-              {/* Client Info Banner */}
-              <div className="p-3 bg-[#F7F7F4] border border-[var(--border)] rounded-[10px] flex flex-wrap items-center justify-between gap-3 text-[12px]">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-[var(--green-700)] text-white font-bold flex items-center justify-center text-xs">
-                    {activeNote.clientName.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div>
-                    <div className="font-bold text-[14px] text-[var(--text)]">
-                      {deIdentify(activeNote.clientName)}
-                    </div>
-                    <div className="text-[11px] text-[var(--text-muted)]">
-                      ID: {activeNote.clientId} · Age {activeNote.clientAge} ({activeNote.clientDob})
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white border border-[var(--border)] text-[var(--text)]">
-                    {activeNote.program} Program
-                  </span>
-                  <span className="text-[11px] text-[var(--text-muted)]">
-                    Caregiver: <strong>{deIdentify(activeNote.caregiverName)}</strong>
-                  </span>
-                </div>
-              </div>
-
-              {/* Visit Selector (Horizontal Recent Visits List) */}
-              <div className="space-y-1.5">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                  Select Visit Record:
-                </div>
-                <div className="grid sm:grid-cols-3 gap-2">
-                  <div className="p-2.5 rounded-[8px] border-2 border-[var(--green-700)] bg-[var(--green-100)] text-[12px] cursor-pointer">
-                    <div className="font-bold text-[var(--green-900)]">{activeNote.visitDate}</div>
-                    <div className="text-[11px] text-[var(--green-900)]">{activeNote.visitTime}</div>
-                    <div className="text-[10px] text-emerald-800 mt-1 flex items-center gap-1">
-                      <span>✓ {activeNote.evvStatus}</span>
-                      <span>· {activeNote.tasks.length} tasks</span>
-                    </div>
+            {/* 2. SHIFTS SECTION (Compact table, newest first) */}
+            <div className="space-y-2">
+              {/* Collapsed summary bar vs Expanded table */}
+              {!isShiftTableExpanded ? (
+                <div className="p-3 bg-[#F7F7F4] border border-[var(--border)] rounded-[8px] flex flex-wrap items-center justify-between gap-2 text-[13px]">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-[var(--text)]">
+                      {currentShift.date} · {currentShift.time} · {deIdentify(currentShift.caregiver)} · {currentShift.tasks.length} tasks
+                    </span>
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                      currentShift.noteStatus === 'Needs fix'
+                        ? 'bg-amber-50 text-amber-900 border border-amber-200'
+                        : currentShift.noteStatus === 'Approved'
+                        ? 'bg-emerald-50 text-emerald-900 border border-emerald-200'
+                        : 'bg-stone-100 text-stone-700'
+                    }`}>
+                      {currentShift.noteStatus}
+                    </span>
                   </div>
 
-                  <div
-                    onClick={() => showToast('Switched to previous visit (Nov 15). Note is already approved.')}
-                    className="p-2.5 rounded-[8px] border border-[var(--border)] bg-[#F7F7F4] text-[12px] cursor-pointer hover:bg-stone-100 transition"
-                  >
-                    <div className="font-semibold text-[var(--text)]">Nov 15, 2026</div>
-                    <div className="text-[11px] text-[var(--text-muted)]">8:00 AM – 11:30 AM</div>
-                    <div className="text-[10px] text-stone-500 mt-1">✓ Verified · Approved</div>
-                  </div>
-
-                  <div
-                    onClick={() => showToast('Switched to visit (Nov 14).')}
-                    className="p-2.5 rounded-[8px] border border-[var(--border)] bg-[#F7F7F4] text-[12px] cursor-pointer hover:bg-stone-100 transition"
-                  >
-                    <div className="font-semibold text-[var(--text)]">Nov 14, 2026</div>
-                    <div className="text-[11px] text-[var(--text-muted)]">8:00 AM – 11:00 AM</div>
-                    <div className="text-[10px] text-stone-500 mt-1">✓ Verified · Approved</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Note Input Area with 3 Tabs */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1 bg-[#F7F7F4] p-0.5 rounded-[8px] border border-[var(--border)]">
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setNoteInputTab('caregiver')}
-                      className={`px-3 py-1 rounded-[6px] text-[12px] font-semibold transition ${
-                        noteInputTab === 'caregiver'
-                          ? 'bg-white text-[var(--text)] shadow-2xs'
-                          : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-                      }`}
+                      onClick={() => setIsShiftTableExpanded(true)}
+                      className="text-[12px] font-semibold text-[var(--green-700)] hover:underline flex items-center gap-1"
                     >
-                      Caregiver&apos;s note
+                      <span>Change shift ▾</span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setNoteInputTab('paste')}
-                      className={`px-3 py-1 rounded-[6px] text-[12px] font-semibold transition ${
-                        noteInputTab === 'paste'
-                          ? 'bg-white text-[var(--text)] shadow-2xs'
-                          : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-                      }`}
-                    >
-                      Paste or type
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setNoteInputTab('upload')}
-                      className={`px-3 py-1 rounded-[6px] text-[12px] font-semibold transition ${
-                        noteInputTab === 'upload'
-                          ? 'bg-white text-[var(--text)] shadow-2xs'
-                          : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-                      }`}
-                    >
-                      Upload
-                    </button>
-                  </div>
-
-                  {/* Dictation Mic Button */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsDictating(!isDictating);
-                      if (!isDictating) {
-                        showToast('Voice dictation active. Speak clearly into microphone.');
-                        setCurrentCaregiverText((prev) => prev + ' Client was oriented and accepted water at 10:00 AM.');
-                      } else {
-                        showToast('Voice dictation ended.');
-                      }
-                    }}
-                    className={`min-h-[28px] px-2.5 rounded-[6px] text-[11px] font-semibold flex items-center gap-1.5 transition ${
-                      isDictating
-                        ? 'bg-rose-500 text-white animate-pulse'
-                        : 'bg-white border border-[var(--border)] text-[var(--text)] hover:bg-[#F0F2ED]'
-                    }`}
-                  >
-                    <span>🎙️</span>
-                    <span>{isDictating ? 'Recording…' : 'Dictate'}</span>
-                  </button>
-                </div>
-
-                {/* Tab 1: Caregiver's Note with Live Highlights */}
-                {noteInputTab === 'caregiver' && (
-                  <div className="space-y-2">
-                    {/* Live Flagging Count Bar */}
-                    <div className="p-2 bg-[#F7F7F4] border border-[var(--border)] rounded-[8px] flex items-center justify-between text-[11px]">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-[var(--text)]">
-                          {activeNote.flags.length} issues identified:
-                        </span>
-                        <span className="flex items-center gap-1 text-amber-800 font-medium">
-                          <span className="w-2 h-2 rounded-full bg-amber-500" />
-                          <span>{activeNote.flags.filter((f) => f.category === 'wording').length} wording</span>
-                        </span>
-                        <span className="flex items-center gap-1 text-blue-800 font-medium">
-                          <span className="w-2 h-2 rounded-full bg-blue-500" />
-                          <span>{activeNote.flags.filter((f) => f.category === 'missing').length} missing detail</span>
-                        </span>
-                        {activeNote.flags.some((f) => f.category === 'safety') && (
-                          <span className="flex items-center gap-1 text-rose-800 font-bold">
-                            <span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse" />
-                            <span>1 safety escalation</span>
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-[10px] text-[var(--text-muted)]">Click highlighted phrase to inspect</span>
-                    </div>
-
-                    {/* Textarea with Highlight Preview */}
-                    <div className="relative">
-                      <textarea
-                        rows={4}
-                        value={currentCaregiverText}
-                        onChange={(e) => setCurrentCaregiverText(e.target.value)}
-                        className="w-full p-3 text-[13px] font-mono bg-white border border-[var(--border)] rounded-[8px] text-[var(--text)] leading-relaxed focus:outline-none focus:ring-1 focus:ring-[var(--green-700)]"
-                      />
-                    </div>
-
-                    {/* Interactive Highlights Bar */}
-                    <div className="p-2.5 bg-white border border-[var(--border)] rounded-[8px] space-y-1.5">
-                      <div className="text-[11px] font-semibold text-[var(--text-muted)] uppercase">
-                        Flagged phrases (tap to review & replace):
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {activeNote.flags.map((flag, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => setActiveHighlightPopover(flag)}
-                            className={`px-2 py-1 rounded-[6px] text-[11px] font-semibold border flex items-center gap-1 cursor-pointer transition ${
-                              flag.category === 'safety'
-                                ? 'bg-rose-100 text-rose-900 border-rose-300 hover:bg-rose-200'
-                                : flag.category === 'wording'
-                                ? 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200'
-                                : 'bg-blue-100 text-blue-900 border-blue-300 hover:bg-blue-200'
-                            }`}
-                          >
-                            <span>&ldquo;{flag.phrase}&rdquo;</span>
-                            <span className="text-[9px] uppercase font-bold px-1 rounded bg-black/10">
-                              {flag.category}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Tab 2: Paste or Type */}
-                {noteInputTab === 'paste' && (
-                  <div className="space-y-2">
-                    <textarea
-                      rows={5}
-                      value={pastedText}
-                      onChange={(e) => setPastedText(e.target.value)}
-                      placeholder="Paste unstructured notes, shift voice memos, or handwritten visit documentation here..."
-                      className="w-full p-3 text-[13px] bg-white border border-[var(--border)] rounded-[8px] text-[var(--text)] focus:outline-none focus:ring-1 focus:ring-[var(--green-700)]"
-                    />
-                    <div className="text-[11px] text-[var(--text-muted)] flex justify-between">
-                      <span>Zero patient data is sent to public AI models. Protected under LiliSphere BAA.</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (pastedText.trim()) {
-                            setCurrentCaregiverText(pastedText);
-                            setNoteInputTab('caregiver');
-                            showToast('Pasted note loaded into review workbench.');
-                          }
-                        }}
-                        className="font-semibold text-[var(--green-700)] hover:underline"
-                      >
-                        Load into workbench →
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Tab 3: Upload Drag & Drop */}
-                {noteInputTab === 'upload' && (
-                  <div className="space-y-2">
-                    <div
-                      onClick={() => {
-                        setUploadedFile({
-                          name: 'Rosa_Vega_Morning_Shift_Audio.m4a',
-                          size: '1.4 MB',
-                          transcript: 'Client was difficult and declined breakfast at 8:40. She took her morning blood pressure pills with water.',
-                        });
-                        setCurrentCaregiverText('Client was difficult and declined breakfast at 8:40. She took her morning blood pressure pills with water.');
-                        showToast('Voice audio file uploaded & transcribed via whisper engine.');
-                      }}
-                      className="p-6 border-2 border-dashed border-[var(--border)] bg-[#F7F7F4] rounded-[8px] text-center cursor-pointer hover:border-[var(--green-700)] transition space-y-1.5"
-                    >
-                      <div className="text-2xl">📁</div>
-                      <div className="text-[13px] font-semibold text-[var(--text)]">
-                        Drop voice memo, PDF, photo scan, or text file here
-                      </div>
-                      <div className="text-[11px] text-[var(--text-muted)]">
-                        Supports .m4a, .mp3, .pdf, .jpg, .png (Auto OCR and speech-to-text)
-                      </div>
-                    </div>
-
-                    {uploadedFile && (
-                      <div className="p-3 bg-white border border-[var(--border)] rounded-[8px] space-y-1.5 text-[12px]">
-                        <div className="flex items-center justify-between font-bold text-[var(--text)]">
-                          <span>Extracted Transcript: {uploadedFile.name}</span>
-                          <span className="text-[10px] text-emerald-700">✓ AI Transcribed</span>
-                        </div>
-                        <p className="p-2 bg-[#F7F7F4] rounded text-[12px] leading-relaxed">
-                          Client was <span className="underline decoration-dotted decoration-amber-500 font-bold">difficult</span> and declined <span className="underline decoration-dotted decoration-blue-500 font-bold">breakfast</span> at 8:40. She took her morning blood pressure pills with water.
-                        </p>
-                        <div className="text-[10px] text-[var(--text-muted)]">
-                          Dotted lines indicate low-confidence transcription items requiring review.
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Attachments Row */}
-              <div className="space-y-1.5 pt-1">
-                <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)] font-semibold uppercase">
-                  <span>Attachments ({activeNote.attachments.length}):</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      showToast('Attachment modal opened: select photos or signed forms.');
-                    }}
-                    className="text-[var(--green-700)] hover:underline normal-case font-bold"
-                  >
-                    + Add attachment
-                  </button>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {activeNote.attachments.map((att) => (
-                    <div
-                      key={att.id}
-                      className="p-2 bg-white border border-[var(--border)] rounded-[6px] flex items-center gap-2 text-[11px] shadow-2xs"
-                    >
-                      <span>📎</span>
-                      <div>
-                        <div className="font-semibold text-[var(--text)]">{att.name}</div>
-                        <div className="text-[10px] text-[var(--text-muted)]">
-                          {att.type} · {att.size} · 🔒 Access logged
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  {activeNote.attachments.length === 0 && (
-                    <div className="text-[11px] text-stone-400 italic">No attachments attached to this visit.</div>
-                  )}
-                </div>
-              </div>
-
-              {/* BIG PRIMARY BUTTON: ✨ Refine note */}
-              <div className="pt-2 flex items-center justify-between gap-3 border-t border-[var(--border)]">
-                <div className="text-[12px] text-[var(--text-muted)]">
-                  Simulated AI operates under strict state Medicaid rulebooks.
-                </div>
-                <button
-                  type="button"
-                  onClick={handleTriggerRefine}
-                  disabled={isRefining}
-                  className="min-h-[40px] px-5 rounded-[8px] bg-[var(--green-700)] text-white text-[14px] font-semibold hover:bg-[var(--green-900)] transition shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex items-center gap-2 shrink-0 disabled:opacity-50"
-                >
-                  <svg className={`w-4 h-4 ${isRefining ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  <span>{isRefining ? refineProgressText : '✨ Refine note'}</span>
-                </button>
-              </div>
-
-            </div>
-
-            {/* ------------------------------------------------------------------- */}
-            {/* COLUMN 3: "3. Refined note" (right side, 380px-440px)               */}
-            {/* ------------------------------------------------------------------- */}
-            <div className={`w-full lg:w-[420px] shrink-0 bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-4 ${
-              responsiveStep !== 3 ? 'hidden lg:block' : 'block'
-            }`}>
-              
-              {/* Header */}
-              <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
-                <div>
-                  <h3 className="text-[15px] font-bold text-[var(--text)]">3. Refined note</h3>
-                  <p className="text-[12px] text-[var(--text-muted)] mt-0.5">Audited draft with amber blanks and program rules</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setDiffView(diffView === 'clean' ? 'diff' : 'clean')}
-                  className={`text-[11px] font-semibold px-2 py-1 rounded-[6px] border transition ${
-                    diffView === 'diff' ? 'bg-[var(--green-700)] text-white border-[var(--green-700)]' : 'bg-white text-[var(--text)] border-[var(--border)]'
-                  }`}
-                >
-                  {diffView === 'diff' ? 'Diff View' : 'Clean View'}
-                </button>
-              </div>
-
-              {/* ----------------------------------------------------------------- */}
-              {/* CRITICAL SAFETY BANNER (WHEN FORCE / INJURY DETECTED)              */}
-              {/* ----------------------------------------------------------------- */}
-              {isSafetyRiskDetected ? (
-                <div className="bg-rose-50 border-2 border-rose-300 rounded-[10px] p-4 space-y-3 animate-fade-in">
-                  <div className="flex items-start gap-2.5">
-                    <span className="text-xl">🚨</span>
-                    <div>
-                      <h4 className="font-bold text-[14px] text-rose-900 leading-tight">
-                        Needs Supervisor Review: Reportable Safety Event
-                      </h4>
-                      <p className="text-[12px] text-rose-800 mt-1 leading-relaxed">
-                        This note contains phrasing indicating potential physical force, non-consensual care, or a client fall resulting in injury. <strong>State Medicaid regulations prohibit rewriting or masking reportable incidents.</strong>
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="p-2.5 bg-white/80 rounded border border-rose-200 text-[11px] text-rose-950 font-mono">
-                    Flagged: &ldquo;{activeNote.flags.find((f) => f.category === 'safety')?.phrase || 'potential force / fall'}&rdquo;
-                  </div>
-
-                  <div className="pt-1 flex flex-col gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowIncidentModal(true)}
-                      className="w-full min-h-[34px] px-3 rounded-[6px] bg-rose-700 hover:bg-rose-800 text-white font-semibold text-[12px] shadow-xs flex items-center justify-center gap-1.5"
-                    >
-                      <span>🚨</span>
-                      <span>Create incident report</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => showToast('Notification dispatched to Dana Whitfield, RN (Clinical Supervisor).')}
-                      className="w-full min-h-[32px] px-3 rounded-[6px] border border-rose-300 bg-white text-rose-900 font-semibold text-[12px] hover:bg-rose-100 flex items-center justify-center gap-1.5"
-                    >
-                      <span>🔔</span>
-                      <span>Notify supervisor (Dana Whitfield, RN)</span>
-                    </button>
+                    <span className="text-stone-300">|</span>
                     <button
                       type="button"
                       onClick={() => {
-                        setSafetyOverrideDismissed(true);
-                        showToast('Clinical supervisor override logged: Proceeding to draft preview.');
+                        // Advance to next shift needing a note
+                        const nextNeedsFix = currentClient.shifts.find((s) => s.id !== currentShift.id && s.noteStatus === 'Needs fix');
+                        if (nextNeedsFix) {
+                          handleSelectShift(nextNeedsFix);
+                          showToast(`Opened next shift: ${nextNeedsFix.date}`);
+                        } else {
+                          showToast('No more shifts needing a note for this client.');
+                        }
                       }}
-                      className="text-[11px] text-rose-800 underline text-center hover:text-rose-950 pt-1"
+                      className="text-[12px] font-semibold text-[var(--green-700)] hover:underline"
                     >
-                      Supervisor Override (Confirmed consensual redirection)
+                      Next shift needing a note →
                     </button>
                   </div>
                 </div>
               ) : (
-                <>
-                  {/* Toolbar Above Output */}
-                  <div className="p-3 bg-[#F7F7F4] border border-[var(--border)] rounded-[10px] space-y-2.5 text-[12px]">
-                    <div className="grid grid-cols-2 gap-2">
-                      {/* Format Selector */}
-                      <div>
-                        <label className="block text-[10px] font-semibold uppercase text-[var(--text-muted)] mb-1">Format</label>
-                        <select
-                          value={refineFormat}
-                          onChange={(e) => setRefineFormat(e.target.value as typeof refineFormat)}
-                          className="w-full h-[30px] px-2 text-[11px] bg-white border border-[var(--border)] rounded-[6px] text-[var(--text)]"
-                        >
-                          <option value="narrative">Narrative paragraph</option>
-                          <option value="soap">SOAP-style</option>
-                          <option value="bullets">Bullet points</option>
-                          <option value="state">State template</option>
-                        </select>
-                      </div>
-
-                      {/* Length Selector */}
-                      <div>
-                        <label className="block text-[10px] font-semibold uppercase text-[var(--text-muted)] mb-1">Length</label>
-                        <select
-                          value={refineLength}
-                          onChange={(e) => setRefineLength(e.target.value as typeof refineLength)}
-                          className="w-full h-[30px] px-2 text-[11px] bg-white border border-[var(--border)] rounded-[6px] text-[var(--text)]"
-                        >
-                          <option value="short">Short</option>
-                          <option value="standard">Standard</option>
-                          <option value="detailed">Detailed</option>
-                        </select>
-                      </div>
+                <div className="space-y-3 p-3 bg-[#F7F7F4] border border-[var(--border)] rounded-[8px]">
+                  {/* Shift Filters & Batch mode toolbar */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-[12px]">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-[var(--text)]">Shifts for {deIdentify(currentClient.name)}</span>
+                      <select
+                        value={shiftCaregiverFilter}
+                        onChange={(e) => setShiftCaregiverFilter(e.target.value)}
+                        className="h-[28px] px-2 text-[11px] bg-white border border-[var(--border)] rounded text-[var(--text)]"
+                      >
+                        <option value="All">All caregivers</option>
+                        <option value="Rosa">Rosa Vega</option>
+                        <option value="Elena">Elena M.</option>
+                      </select>
+                      <select
+                        value={shiftStatusFilter}
+                        onChange={(e) => setShiftStatusFilter(e.target.value)}
+                        className="h-[28px] px-2 text-[11px] bg-white border border-[var(--border)] rounded text-[var(--text)]"
+                      >
+                        <option value="All">All statuses</option>
+                        <option value="Needs fix">Needs fix</option>
+                        <option value="Approved">Approved</option>
+                        <option value="No note yet">No note yet</option>
+                      </select>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2">
-                      {/* Program Selector */}
-                      <div>
-                        <label className="block text-[10px] font-semibold uppercase text-[var(--text-muted)] mb-1">Program Rules</label>
-                        <select
-                          value={refineProgram}
-                          onChange={(e) => setRefineProgram(e.target.value as typeof refineProgram)}
-                          className="w-full h-[30px] px-2 text-[11px] bg-white border border-[var(--border)] rounded-[6px] text-[var(--text)]"
-                        >
-                          <option value="IHSS">IHSS</option>
-                          <option value="CFC">CFC</option>
-                          <option value="HCBS">HCBS</option>
-                          <option value="IRSS">IRSS</option>
-                          <option value="CNA">CNA</option>
-                          <option value="HMA">HMA</option>
-                          <option value="Personal Care">Personal Care</option>
-                        </select>
-                      </div>
-
-                      {/* Language Toggle */}
-                      <div>
-                        <label className="block text-[10px] font-semibold uppercase text-[var(--text-muted)] mb-1">Language</label>
-                        <div className="flex h-[30px] bg-white border border-[var(--border)] rounded-[6px] p-0.5">
-                          <button
-                            type="button"
-                            onClick={() => setRefineLanguage('en')}
-                            className={`flex-1 text-[11px] font-bold rounded ${refineLanguage === 'en' ? 'bg-[var(--green-700)] text-white' : 'text-stone-600'}`}
-                          >
-                            EN
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setRefineLanguage('es')}
-                            className={`flex-1 text-[11px] font-bold rounded ${refineLanguage === 'es' ? 'bg-[var(--green-700)] text-white' : 'text-stone-600'}`}
-                          >
-                            ES
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Include Toggles */}
-                    <div className="pt-1 border-t border-[var(--border)] grid grid-cols-2 gap-1.5 text-[11px]">
-                      <label className="flex items-center gap-1.5 text-[var(--text)] cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={includeOptions.times}
-                          onChange={(e) => setIncludeOptions({ ...includeOptions, times: e.target.checked })}
-                          className="rounded text-[var(--green-700)]"
-                        />
-                        <span>Times & duration</span>
-                      </label>
-                      <label className="flex items-center gap-1.5 text-[var(--text)] cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={includeOptions.response}
-                          onChange={(e) => setIncludeOptions({ ...includeOptions, response: e.target.checked })}
-                          className="rounded text-[var(--green-700)]"
-                        />
-                        <span>Client response</span>
-                      </label>
-                      <label className="flex items-center gap-1.5 text-[var(--text)] cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={includeOptions.tasks}
-                          onChange={(e) => setIncludeOptions({ ...includeOptions, tasks: e.target.checked })}
-                          className="rounded text-[var(--green-700)]"
-                        />
-                        <span>Care plan tasks</span>
-                      </label>
-                      <label className="flex items-center gap-1.5 text-[var(--text)] cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={includeOptions.followUp}
-                          onChange={(e) => setIncludeOptions({ ...includeOptions, followUp: e.target.checked })}
-                          className="rounded text-[var(--green-700)]"
-                        />
-                        <span>Follow-up needed</span>
-                      </label>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleTriggerRefine}
-                      className="w-full min-h-[26px] bg-white hover:bg-stone-50 border border-[var(--border)] rounded text-[11px] font-bold text-[var(--green-700)] transition"
-                    >
-                      Apply options & Refine again
-                    </button>
-                  </div>
-
-                  {/* Refined Note Output Card */}
-                  <div className="bg-white border border-[var(--border)] rounded-[10px] p-4 shadow-2xs space-y-2">
-                    <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)] pb-1 border-b border-[var(--border)]">
-                      <span className="font-bold text-[var(--text)]">Refined note (draft)</span>
-                      <span className="text-[10px] text-emerald-800 bg-emerald-50 px-2 py-0.2 rounded-full font-bold">
-                        {refineFormat.toUpperCase()} · {refineLength.toUpperCase()}
-                      </span>
-                    </div>
-
-                    {/* Diff View vs Clean View */}
-                    {diffView === 'diff' ? (
-                      <div className="text-[12px] leading-relaxed text-[var(--text)] bg-[#F7F7F4] p-3 rounded-[6px] font-mono">
-                        <del className="bg-rose-100 text-rose-900 line-through px-1 rounded mr-1">
-                          Client was difficult and refused to eat breakfast.
-                        </del>
-                        <ins className="bg-emerald-100 text-emerald-950 no-underline font-semibold px-1 rounded mr-1">
-                          Client declined breakfast at 8:40 AM. Caregiver verbally re-offered after 15 minutes; client accepted yogurt.
-                        </ins>
-                        <del className="bg-rose-100 text-rose-900 line-through px-1 rounded mr-1">
-                          I made her eat anyway because she needs food before
-                        </del>
-                        <ins className="bg-emerald-100 text-emerald-950 no-underline font-semibold px-1 rounded">
-                          Morning hypertension medication reminded per care plan at 9:05 AM with water.
-                        </ins>
-                      </div>
-                    ) : isEditingRefinedManually ? (
-                      <textarea
-                        rows={5}
-                        value={editableRefinedText}
-                        onChange={(e) => setEditableRefinedText(e.target.value)}
-                        className="w-full p-2.5 text-[12px] bg-[#F7F7F4] border border-[var(--border)] rounded text-[var(--text)] focus:outline-none"
-                      />
-                    ) : (
-                      <div className="text-[12px] leading-relaxed text-[var(--text)] p-1">
-                        {editableRefinedText.includes('[add') ? (
-                          <div className="space-y-1">
-                            {editableRefinedText.split(/(\[add [^\]]+\])/g).map((part, i) => {
-                              if (part.startsWith('[add')) {
-                                return (
-                                  <input
-                                    key={i}
-                                    type="text"
-                                    value={amberBlanks[part] || ''}
-                                    placeholder={part}
-                                    onChange={(e) => setAmberBlanks({ ...amberBlanks, [part]: e.target.value })}
-                                    className="inline-block px-1.5 py-0.5 mx-0.5 rounded bg-amber-100 border border-amber-300 text-amber-900 font-semibold text-[11px] focus:outline-none focus:ring-1 focus:ring-amber-500 min-w-[120px]"
-                                  />
-                                );
-                              }
-                              return <span key={i}>{part}</span>;
-                            })}
-                          </div>
-                        ) : (
-                          <p>{editableRefinedText}</p>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="text-[10px] text-[var(--text-muted)] italic">
-                      Amber blanks can be typed into directly or answered below.
-                    </div>
-                  </div>
-
-                  {/* Questions for the Caregiver */}
-                  {activeNote.questions.length > 0 && (
-                    <div className="bg-[#F7F7F4] border border-[var(--border)] rounded-[10px] p-3 space-y-2">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="font-bold text-[var(--text)]">Questions for caregiver ({activeNote.questions.length})</span>
+                    <div className="flex items-center gap-2">
+                      {batchSelectedShiftIds.length > 0 && (
                         <button
                           type="button"
-                          onClick={() => setShowQuestions(!showQuestions)}
-                          className="text-[10px] text-[var(--green-700)] font-semibold hover:underline"
+                          onClick={() => {
+                            showToast(`Batch queued: ${batchSelectedShiftIds.length} shifts queued for automated rule check.`);
+                            setBatchSelectedShiftIds([]);
+                          }}
+                          className="min-h-[28px] px-3 rounded bg-[var(--green-700)] text-white font-semibold text-[11px] hover:bg-[var(--green-900)] transition"
                         >
-                          {showQuestions ? 'Hide' : 'Expand'}
+                          Refine selected ({batchSelectedShiftIds.length})
                         </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setIsShiftTableExpanded(false)}
+                        className="text-[12px] text-[var(--text-muted)] hover:text-[var(--text)] underline"
+                      >
+                        Collapse table ▴
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Shifts Table */}
+                  <div className="bg-white border border-[var(--border)] rounded-[6px] overflow-hidden">
+                    <table className="w-full text-left border-collapse text-[12px]">
+                      <thead>
+                        <tr className="border-b border-[var(--border)] bg-stone-50 text-[var(--text-muted)] font-semibold h-[36px]">
+                          <th className="px-3 w-8">
+                            <input
+                              type="checkbox"
+                              checked={batchSelectedShiftIds.length > 0}
+                              onChange={() => {
+                                if (batchSelectedShiftIds.length > 0) setBatchSelectedShiftIds([]);
+                                else setBatchSelectedShiftIds(currentClient.shifts.map((s) => s.id));
+                              }}
+                              className="rounded text-[var(--green-700)]"
+                            />
+                          </th>
+                          <th className="px-3">Date</th>
+                          <th className="px-3">Time</th>
+                          <th className="px-3">Caregiver</th>
+                          <th className="px-3">Hours</th>
+                          <th className="px-3">EVV</th>
+                          <th className="px-3">Note Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[var(--border)]">
+                        {Object.entries(groupedShifts).map(([week, shifts]) => (
+                          <React.Fragment key={week}>
+                            {shifts.length > 0 && (
+                              <tr className="bg-[#F7F7F4] text-[11px] font-bold text-stone-500">
+                                <td colSpan={7} className="px-3 py-1">
+                                  {week}
+                                </td>
+                              </tr>
+                            )}
+                            {shifts.map((shift) => {
+                              const isSelected = shift.id === currentShift.id;
+                              return (
+                                <tr
+                                  key={shift.id}
+                                  onClick={() => handleSelectShift(shift)}
+                                  className={`h-[40px] cursor-pointer transition ${
+                                    isSelected ? 'bg-[var(--green-100)] font-medium text-[var(--green-900)]' : 'hover:bg-stone-50'
+                                  }`}
+                                >
+                                  <td className="px-3" onClick={(e) => e.stopPropagation()}>
+                                    <input
+                                      type="checkbox"
+                                      checked={batchSelectedShiftIds.includes(shift.id)}
+                                      onChange={() => {
+                                        setBatchSelectedShiftIds((prev) =>
+                                          prev.includes(shift.id) ? prev.filter((id) => id !== shift.id) : [...prev, shift.id]
+                                        );
+                                      }}
+                                      className="rounded text-[var(--green-700)]"
+                                    />
+                                  </td>
+                                  <td className="px-3 font-semibold">{shift.date}</td>
+                                  <td className="px-3 text-stone-600">{shift.time}</td>
+                                  <td className="px-3">{deIdentify(shift.caregiver)}</td>
+                                  <td className="px-3">{shift.hours}</td>
+                                  <td className="px-3">
+                                    <span className={shift.evvStatus === 'Verified' ? 'text-emerald-700' : 'text-amber-700'}>
+                                      {shift.evvStatus}
+                                    </span>
+                                  </td>
+                                  <td className="px-3">
+                                    <span className={`text-[11px] ${
+                                      shift.noteStatus === 'Needs fix'
+                                        ? 'text-amber-800 font-semibold'
+                                        : shift.noteStatus === 'Approved'
+                                        ? 'text-emerald-700'
+                                        : 'text-stone-500'
+                                    }`}>
+                                      {shift.noteStatus}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </React.Fragment>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 3. THE NOTE (THE EDITOR) */}
+            <div className="space-y-3">
+              {/* Segmented Control */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center bg-[#F7F7F4] border border-[var(--border)] rounded-[8px] p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setEditorTab('caregiver')}
+                    className={`px-3 py-1 rounded-[6px] text-[12px] font-semibold transition ${
+                      editorTab === 'caregiver' ? 'bg-white text-[var(--text)] shadow-2xs' : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+                    }`}
+                  >
+                    Caregiver&apos;s note
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditorTab('paste')}
+                    className={`px-3 py-1 rounded-[6px] text-[12px] font-semibold transition ${
+                      editorTab === 'paste' ? 'bg-white text-[var(--text)] shadow-2xs' : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+                    }`}
+                  >
+                    Paste or type
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditorTab('upload')}
+                    className={`px-3 py-1 rounded-[6px] text-[12px] font-semibold transition ${
+                      editorTab === 'upload' ? 'bg-white text-[var(--text)] shadow-2xs' : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+                    }`}
+                  >
+                    Upload or dictate
+                  </button>
+                </div>
+
+                {/* Microphone Dictation Trigger */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDictating(!isDictating);
+                    if (!isDictating) {
+                      showToast('Listening... Speak note details clearly.');
+                      setRoughText((prev) => prev + ' Client took all morning medications on time.');
+                    } else {
+                      showToast('Dictation ended.');
+                    }
+                  }}
+                  className={`min-h-[30px] px-2.5 rounded-[6px] text-[12px] font-medium flex items-center gap-1.5 transition ${
+                    isDictating ? 'bg-rose-50 text-rose-700 border border-rose-200 animate-pulse' : 'bg-white border border-[var(--border)] text-[var(--text)] hover:bg-[#F0F2ED]'
+                  }`}
+                >
+                  <span>🎙️</span>
+                  <span>{isDictating ? 'Listening…' : 'Dictate'}</span>
+                </button>
+              </div>
+
+              {/* Editor Surface */}
+              {editorTab === 'caregiver' && (
+                <div className="space-y-2">
+                  <textarea
+                    rows={4}
+                    value={roughText}
+                    onChange={(e) => setRoughText(e.target.value)}
+                    className="w-full p-3 text-[15px] leading-[1.6] font-normal text-[var(--text)] bg-white border border-[var(--border)] rounded-[8px] focus:outline-none focus:ring-1 focus:ring-[var(--green-700)]"
+                  />
+
+                  {/* Underlined Interactive Phrases Bar (Slim Line) */}
+                  {currentShift.flags.length > 0 && (
+                    <div className="flex flex-wrap items-center justify-between text-[13px] pt-1 text-[var(--text-muted)]">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-[var(--text)]">Flagged phrases:</span>
+                        {currentShift.flags.map((flag, idx) => (
+                          <span
+                            key={idx}
+                            onClick={() => setActiveFlagPopover(flag)}
+                            className={
+                              flag.category === 'safety'
+                                ? 'underline decoration-rose-500 decoration-2 underline-offset-4 cursor-pointer hover:bg-rose-50 text-rose-900 px-1 py-0.5 rounded'
+                                : flag.category === 'wording'
+                                ? 'underline decoration-amber-400 decoration-2 underline-offset-4 cursor-pointer hover:bg-amber-50 text-[var(--text)] px-1 py-0.5 rounded'
+                                : 'underline decoration-sky-400 decoration-2 underline-offset-4 cursor-pointer hover:bg-sky-50 text-[var(--text)] px-1 py-0.5 rounded'
+                            }
+                          >
+                            &ldquo;{flag.phrase}&rdquo;
+                          </span>
+                        ))}
                       </div>
 
-                      {showQuestions && (
-                        <div className="space-y-2 pt-1 text-[11px]">
-                          {activeNote.questions.map((q) => (
-                            <div key={q.id} className="p-2 bg-white rounded border border-[var(--border)] space-y-1">
-                              <div className="font-semibold text-[var(--text)]">{q.question}</div>
-                              <input
-                                type="text"
-                                value={questionsAnswerState[q.id] || ''}
-                                onChange={(e) => setQuestionsAnswerState({ ...questionsAnswerState, [q.id]: e.target.value })}
-                                placeholder="Type caregiver answer or click mic..."
-                                className="w-full p-1.5 bg-[#F7F7F4] border border-stone-200 rounded text-[11px] focus:outline-none"
-                              />
-                            </div>
-                          ))}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              showToast('Answers merged into refined draft.');
-                              handleTriggerRefine();
-                            }}
-                            className="w-full min-h-[26px] bg-[var(--green-700)] text-white font-bold rounded text-[11px] hover:bg-[var(--green-900)] transition"
-                          >
-                            Merge answers & Refine again
-                          </button>
+                      <span className="text-[12px]">
+                        {currentShift.flags.length} things to fix ·{' '}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (currentShift.flags[0]) setActiveFlagPopover(currentShift.flags[0]);
+                          }}
+                          className="text-[var(--green-700)] font-semibold hover:underline"
+                        >
+                          Review
+                        </button>
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {editorTab === 'paste' && (
+                <div className="space-y-2">
+                  <textarea
+                    rows={4}
+                    value={pastedText}
+                    onChange={(e) => setPastedText(e.target.value)}
+                    placeholder="Paste notes from messaging apps, voice memo transcripts, or paper visit slips here..."
+                    className="w-full p-3 text-[15px] leading-[1.6] font-normal text-[var(--text)] bg-white border border-[var(--border)] rounded-[8px] focus:outline-none focus:ring-1 focus:ring-[var(--green-700)]"
+                  />
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (pastedText.trim()) {
+                          setRoughText(pastedText);
+                          setEditorTab('caregiver');
+                          showToast('Pasted text loaded into review note.');
+                        }
+                      }}
+                      className="text-[12px] font-semibold text-[var(--green-700)] hover:underline"
+                    >
+                      Use as caregiver note →
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {editorTab === 'upload' && (
+                <div className="space-y-2">
+                  <div
+                    onClick={() => {
+                      setUploadedFileName('Rosa_Vega_Morning_Care.m4a');
+                      setRoughText('Got there around 8:00 AM. Assisted with morning bath and breakfast. Client ate yogurt and took medication.');
+                      showToast('File extracted and transcript loaded.');
+                    }}
+                    className="p-5 border-2 border-dashed border-[var(--border)] bg-[#F7F7F4] rounded-[8px] text-center cursor-pointer hover:border-[var(--green-700)] transition text-[13px]"
+                  >
+                    <div className="font-semibold text-[var(--text)]">
+                      {uploadedFileName ? `Loaded: ${uploadedFileName}` : 'Drop audio recording, PDF, photo scan, or text file here'}
+                    </div>
+                    <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                      Accepts audio, image scan, PDF, or TXT
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Attachments Row */}
+              <div className="flex flex-wrap items-center gap-2 pt-1 text-[12px]">
+                <span className="text-[var(--text-muted)]">Attachments:</span>
+                {currentShift.attachments.map((att) => (
+                  <span
+                    key={att.id}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#F7F7F4] border border-[var(--border)] text-[var(--text)]"
+                  >
+                    <span>📎</span>
+                    <span>{att.name}</span>
+                    <span className="text-[10px] text-stone-400">· 🔒 Access logged</span>
+                  </span>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => showToast('Attachment uploaded and verified.')}
+                  className="text-[var(--green-700)] font-semibold hover:underline text-[12px]"
+                >
+                  + Add attachment
+                </button>
+              </div>
+
+              {/* Collapsible "Quick Details" Strip (Pre-filled chips so flow works) */}
+              {currentShift.quickDetails.length > 0 && (
+                <div className="p-3 bg-[#F7F7F4] border border-[var(--border)] rounded-[8px] space-y-1.5 text-[12px]">
+                  <div className="font-semibold text-[var(--text)]">Quick details (clarifications from caregiver):</div>
+                  <div className="flex flex-wrap gap-2">
+                    {currentShift.quickDetails.map((q) => (
+                      <span
+                        key={q.id}
+                        className="px-2.5 py-1 rounded bg-white border border-[var(--border)] text-[var(--text)]"
+                      >
+                        <strong>{q.question}</strong> → <span className="text-[var(--green-700)] font-medium">{q.answer}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Output Options in ONE Compact Row Above Button */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 text-[12px] border-t border-[var(--border)]">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[var(--text-muted)]">Format:</span>
+                    <select
+                      value={refineFormat}
+                      onChange={(e) => setRefineFormat(e.target.value as typeof refineFormat)}
+                      className="h-[28px] px-2 text-[12px] bg-white border border-[var(--border)] rounded text-[var(--text)]"
+                    >
+                      <option value="narrative">Narrative</option>
+                      <option value="soap">SOAP</option>
+                      <option value="bullets">Bullet points</option>
+                      <option value="state">State template</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[var(--text-muted)]">Length:</span>
+                    <select
+                      value={refineLength}
+                      onChange={(e) => setRefineLength(e.target.value as typeof refineLength)}
+                      className="h-[28px] px-2 text-[12px] bg-white border border-[var(--border)] rounded text-[var(--text)]"
+                    >
+                      <option value="short">Short</option>
+                      <option value="standard">Standard</option>
+                      <option value="detailed">Detailed</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[var(--text-muted)]">Program:</span>
+                    <span className="font-semibold text-[var(--text)]">{currentClient.program}</span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[var(--text-muted)]">Language:</span>
+                    <button
+                      type="button"
+                      onClick={() => setRefineLanguage(refineLanguage === 'en' ? 'es' : 'en')}
+                      className="px-2 py-0.5 rounded border border-[var(--border)] bg-white text-[11px] font-bold"
+                    >
+                      {refineLanguage.toUpperCase()}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Primary Button: "Refine note" (One primary green button per view!) */}
+                <button
+                  type="button"
+                  onClick={handleRefineNote}
+                  disabled={isRefining}
+                  className="min-h-[38px] px-5 rounded-[8px] bg-[var(--green-700)] hover:bg-[var(--green-900)] text-white text-[14px] font-semibold transition shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex items-center gap-2 shrink-0 disabled:opacity-50"
+                >
+                  <svg className={`w-4 h-4 ${isRefining ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <span>{isRefining ? 'Refining note…' : 'Refine note'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 4. RESULT (APPEARS BELOW THE EDITOR AFTER REFINE) */}
+            {isSafetyRisk ? (
+              // Sample B: Safety Case Notice (No rewrite offered, calm red border)
+              <div className="border border-rose-300 bg-rose-50/50 rounded-[12px] p-5 space-y-3">
+                <div className="flex items-start gap-2.5">
+                  <span className="text-xl">⚠️</span>
+                  <div>
+                    <h4 className="font-bold text-[15px] text-rose-950">Needs supervisor review: Reportable safety event</h4>
+                    <p className="text-[13px] text-rose-900 mt-1 leading-relaxed">
+                      This note describes potential physical force (&ldquo;made her eat anyway&rdquo;) or a client injury. <strong>State Medicaid regulations prohibit rewriting reportable incidents.</strong> The original wording must be reported directly to clinical supervisors.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsIncidentModalOpen(true)}
+                    className="min-h-[34px] px-4 rounded-[6px] bg-rose-700 text-white font-semibold text-[13px] hover:bg-rose-800 transition shadow-2xs"
+                  >
+                    Create incident report
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => showToast('Notification dispatched to Dana Whitfield, RN (Clinical Supervisor).')}
+                    className="min-h-[34px] px-4 rounded-[6px] bg-white border border-rose-300 text-rose-900 font-semibold text-[13px] hover:bg-rose-100 transition"
+                  >
+                    Notify supervisor
+                  </button>
+                </div>
+              </div>
+            ) : hasRefined && (
+              <div className="space-y-4 pt-4 border-t border-[var(--border)] animate-fadeIn">
+                
+                {/* One-Line Readiness Strip */}
+                <div className="p-3 bg-[#F7F7F4] border border-[var(--border)] rounded-[8px] flex flex-wrap items-center justify-between gap-2 text-[12px]">
+                  <div className="flex items-center gap-3 flex-wrap text-stone-700">
+                    <span className="text-emerald-800 font-semibold">✓ Objective wording</span>
+                    <span className="text-emerald-800 font-semibold">✓ Tasks match care plan</span>
+                    <span className="text-emerald-800 font-semibold">✓ Times and duration</span>
+                    <span className="text-emerald-800 font-semibold">✓ Client response</span>
+                    <span className="text-emerald-800 font-semibold">✓ Follow-up</span>
+                  </div>
+                  <span className="font-bold text-[var(--green-700)]">Ready for Medicaid review</span>
+                </div>
+
+                {/* Before | After Card */}
+                <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
+                    <span className="font-bold text-[14px] text-[var(--text)]">Review Comparison</span>
+                    <div className="flex items-center gap-1 text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => setResultViewMode('side-by-side')}
+                        className={`px-2.5 py-1 rounded transition ${
+                          resultViewMode === 'side-by-side' ? 'bg-[var(--green-700)] text-white font-semibold' : 'text-stone-600 hover:text-stone-900'
+                        }`}
+                      >
+                        Side by side
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setResultViewMode('refined-only')}
+                        className={`px-2.5 py-1 rounded transition ${
+                          resultViewMode === 'refined-only' ? 'bg-[var(--green-700)] text-white font-semibold' : 'text-stone-600 hover:text-stone-900'
+                        }`}
+                      >
+                        Refined only
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setResultViewMode('show-changes')}
+                        className={`px-2.5 py-1 rounded transition ${
+                          resultViewMode === 'show-changes' ? 'bg-[var(--green-700)] text-white font-semibold' : 'text-stone-600 hover:text-stone-900'
+                        }`}
+                      >
+                        Show changes
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Side-by-Side View */}
+                  {resultViewMode === 'side-by-side' && (
+                    <div className="grid md:grid-cols-2 gap-4">
+                      {/* Left: Caregiver's rough note */}
+                      <div className="p-3 bg-[#F7F7F4] rounded-[8px] border border-[var(--border)] space-y-1">
+                        <div className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Before (Caregiver rough note)</div>
+                        <p className="text-[15px] leading-[1.6] text-stone-700 font-normal">{roughText}</p>
+                      </div>
+
+                      {/* Right: Refined note */}
+                      <div className="p-3 bg-white rounded-[8px] border border-[var(--border)] space-y-1">
+                        <div className="text-[11px] font-semibold text-[var(--green-700)] uppercase tracking-wider">
+                          After (Refined · {refineFormat} · {refineLength})
                         </div>
+                        {isEditingManually ? (
+                          <textarea
+                            rows={6}
+                            value={editableRefinedText}
+                            onChange={(e) => setEditableRefinedText(e.target.value)}
+                            className="w-full p-2 text-[15px] leading-[1.6] bg-stone-50 border border-[var(--border)] rounded text-[var(--text)] focus:outline-none"
+                          />
+                        ) : (
+                          <p className="text-[15px] leading-[1.6] text-[var(--text)] font-normal">{editableRefinedText}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Refined Only View */}
+                  {resultViewMode === 'refined-only' && (
+                    <div className="p-4 bg-white rounded-[8px] border border-[var(--border)]">
+                      {isEditingManually ? (
+                        <textarea
+                          rows={6}
+                          value={editableRefinedText}
+                          onChange={(e) => setEditableRefinedText(e.target.value)}
+                          className="w-full p-2 text-[15px] leading-[1.6] bg-stone-50 border border-[var(--border)] rounded text-[var(--text)] focus:outline-none"
+                        />
+                      ) : (
+                        <p className="text-[15px] leading-[1.6] text-[var(--text)] font-normal">{editableRefinedText}</p>
                       )}
                     </div>
                   )}
 
-                  {/* Program Readiness Checklist Card */}
-                  <div className="p-3 bg-white border border-[var(--border)] rounded-[10px] space-y-2 text-[11px]">
-                    <div className="flex items-center justify-between font-bold">
-                      <span className="text-[var(--text)]">Required for {refineProgram}</span>
-                      <span className="text-[10px] text-emerald-800 bg-emerald-50 px-2 py-0.2 rounded-full border border-emerald-200">
-                        Ready to send
-                      </span>
+                  {/* Show Changes (Diff) View */}
+                  {resultViewMode === 'show-changes' && (
+                    <div className="p-4 bg-white rounded-[8px] border border-[var(--border)] text-[15px] leading-[1.6]">
+                      <del className="bg-rose-50 text-rose-800 line-through decoration-rose-300 px-1 rounded mr-1">
+                        Got there around 8. Helped her with bath and stuff, made breakfast. She was grumpy and didn&apos;t eat much. Did the normal meds thing.
+                      </del>
+                      <ins className="bg-emerald-50 text-emerald-900 no-underline font-normal px-1 rounded">
+                        Caregiver arrived at 8:00 AM. Assisted client with morning hygiene, including bathing (approx. 25 minutes), and prepared breakfast. Client expressed she was not hungry and ate approximately half of the yogurt offered. Medication reminder provided at 9:05 AM with water per physician orders.
+                      </ins>
                     </div>
-                    <div className="grid grid-cols-2 gap-1 text-[10px] text-stone-700">
-                      <div>✓ Objective wording</div>
-                      <div>✓ Exact times documented</div>
-                      <div>✓ Care plan tasks verified</div>
-                      <div>✓ Client response documented</div>
+                  )}
+
+                  {/* Result Actions */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[var(--border)]">
+                    <div className="flex items-center gap-2">
+                      {/* Primary Button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          showToast(`Draft sent to ${currentShift.caregiver} for mobile app approval.`);
+                        }}
+                        className="min-h-[36px] px-4 rounded-[8px] bg-[var(--green-700)] text-white text-[13px] font-semibold hover:bg-[var(--green-900)] transition shadow-2xs"
+                      >
+                        Send to caregiver for approval
+                      </button>
                     </div>
-                  </div>
 
-                  {/* Action Buttons */}
-                  <div className="space-y-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        showToast(`Refined note sent to ${activeNote.caregiverName} for mobile approval.`);
-                        setNotes((prev) =>
-                          prev.map((n) =>
-                            n.id === activeNote.id
-                              ? {
-                                  ...n,
-                                  status: 'Waiting on caregiver',
-                                  timeline: [
-                                    { title: 'Draft sent to caregiver for confirmation', actor: 'Maya R.', time: 'Just now' },
-                                    ...n.timeline,
-                                  ],
-                                }
-                              : n
-                          )
-                        );
-                      }}
-                      className="w-full min-h-[38px] px-4 rounded-[8px] bg-[var(--green-700)] text-white text-[13px] font-semibold hover:bg-[var(--green-900)] transition shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex items-center justify-center gap-1.5"
-                    >
-                      <span>📤</span>
-                      <span>Send to caregiver for approval</span>
-                    </button>
-
-                    <div className="grid grid-cols-4 gap-1.5">
+                    <div className="flex items-center gap-2 text-[12px]">
                       <button
                         type="button"
                         onClick={() => {
                           navigator.clipboard.writeText(editableRefinedText);
-                          showToast('Refined text copied to clipboard.');
+                          showToast('Refined note copied to clipboard.');
                         }}
-                        className="min-h-[28px] px-2 rounded-[6px] border border-[var(--border)] bg-white text-[11px] font-semibold text-[var(--text)] hover:bg-[#F0F2ED]"
+                        className="min-h-[32px] px-3 rounded-[6px] border border-[var(--border)] bg-white text-[var(--text)] hover:bg-[#F0F2ED]"
                       >
                         Copy
                       </button>
                       <button
                         type="button"
-                        onClick={() => setIsEditingRefinedManually(!isEditingRefinedManually)}
-                        className="min-h-[28px] px-2 rounded-[6px] border border-[var(--border)] bg-white text-[11px] font-semibold text-[var(--text)] hover:bg-[#F0F2ED]"
+                        onClick={() => setIsEditingManually(!isEditingManually)}
+                        className="min-h-[32px] px-3 rounded-[6px] border border-[var(--border)] bg-white text-[var(--text)] hover:bg-[#F0F2ED]"
                       >
-                        {isEditingRefinedManually ? 'Save' : 'Edit'}
+                        {isEditingManually ? 'Save' : 'Edit'}
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          showToast('Original note kept as recorded.');
-                        }}
-                        className="min-h-[28px] px-2 rounded-[6px] border border-[var(--border)] bg-white text-[11px] font-semibold text-[var(--text)] hover:bg-[#F0F2ED]"
+                        onClick={() => handleRefineNote()}
+                        className="min-h-[32px] px-3 rounded-[6px] border border-[var(--border)] bg-white text-[var(--text)] hover:bg-[#F0F2ED]"
                       >
-                        Keep orig
+                        Regenerate
                       </button>
                       <button
                         type="button"
-                        onClick={() => setShowMoreActions(!showMoreActions)}
-                        className="min-h-[28px] px-2 rounded-[6px] border border-[var(--border)] bg-white text-[11px] font-semibold text-[var(--text)] hover:bg-[#F0F2ED]"
+                        onClick={() => showToast('Original caregiver text kept as final note.')}
+                        className="min-h-[32px] px-3 rounded-[6px] border border-[var(--border)] bg-white text-[var(--text)] hover:bg-[#F0F2ED]"
                       >
-                        More ▾
+                        Keep original
                       </button>
                     </div>
-
-                    {showMoreActions && (
-                      <div className="p-2 bg-[#F7F7F4] border border-[var(--border)] rounded-[6px] space-y-1 text-[11px]">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            showToast('Escalated to Dana Whitfield, RN Supervisor.');
-                            setShowMoreActions(false);
-                          }}
-                          className="w-full text-left px-2 py-1 hover:bg-white rounded font-medium text-stone-800"
-                        >
-                          Escalate to RN Supervisor
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            showToast('Exported verified PDF audit packet for state submission.');
-                            setShowMoreActions(false);
-                          }}
-                          className="w-full text-left px-2 py-1 hover:bg-white rounded font-medium text-stone-800"
-                        >
-                          Export to PDF / Audit packet
-                        </button>
-                      </div>
-                    )}
                   </div>
 
-                  {/* AI Info Line */}
-                  <div className="text-[10px] text-stone-400 text-center leading-relaxed">
-                    AI suggests wording only. The caregiver reviews and stays legally responsible for clinical accuracy.
+                  {/* Small Disclaimer */}
+                  <div className="text-[11px] text-[var(--text-muted)] text-center pt-1">
+                    Suggested by AI. The caregiver reviews and remains responsible.
                   </div>
-                </>
-              )}
-
-            </div>
-
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 3. TAB 2: NEW NOTE TAB (GUIDED WIZARD - PRESERVED)                        */}
-      {/* ========================================================================= */}
-      {activeTab === 'new-note' && (
-        <div className="space-y-6 max-w-3xl mx-auto">
-          <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-3">
-            <div className="flex items-center justify-between text-[12px] font-semibold">
-              <span className="text-[var(--text)]">Guided Note Creation</span>
-              <span className="text-[var(--text-muted)]">Draft saved just now</span>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2 text-center text-[12px]">
-              {[
-                { num: 1, label: '1. Pick Client' },
-                { num: 2, label: '2. Dictate / Type' },
-                { num: 3, label: '3. Review & Submit' },
-              ].map((s) => (
-                <div key={s.num} className="flex flex-col items-center">
-                  <div
-                    className={`w-full h-1.5 rounded-full mb-1.5 transition ${
-                      wizardStep >= s.num ? 'bg-[var(--green-700)]' : 'bg-[var(--border)]'
-                    }`}
-                  />
-                  <span className={`text-[12px] ${wizardStep === s.num ? 'font-bold text-[var(--text)]' : 'text-[var(--text-muted)]'}`}>
-                    {s.label}
-                  </span>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-6 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-4">
-            <div>
-              <label className="block text-[12px] font-semibold text-[var(--text)] mb-1">Client Caseload</label>
-              <select
-                value={wizardClientId}
-                onChange={(e) => setWizardClientId(e.target.value)}
-                className="w-full p-2 bg-[#F7F7F4] border border-[var(--border)] rounded text-[13px]"
-              >
-                {notes.map((n) => (
-                  <option key={n.clientId} value={n.clientId}>
-                    {n.clientName} ({n.program} · {n.clientId})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[12px] font-semibold text-[var(--text)] mb-1">Care Notes Draft</label>
-              <textarea
-                rows={5}
-                value={roughText}
-                onChange={(e) => setRoughText(e.target.value)}
-                placeholder="Type or dictate care activities..."
-                className="w-full p-3 bg-[#F7F7F4] border border-[var(--border)] rounded text-[13px]"
-              />
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  showToast('Note created and routed to Note Coach workbench.');
-                  setActiveTab('coach');
-                }}
-                className="min-h-[36px] px-5 rounded-[8px] bg-[var(--green-700)] text-white text-[13px] font-semibold hover:bg-[var(--green-900)]"
-              >
-                Send to Note Coach →
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 4. TAB 3: QUALITY REPORTS (PRESERVED)                                     */}
-      {/* ========================================================================= */}
-      {activeTab === 'quality' && (
-        <div className="space-y-5">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-              <span className="text-[12px] font-semibold uppercase text-[var(--text-muted)] block mb-1">First-Pass Rate</span>
-              <div className="text-[28px] font-bold text-[var(--text)]">84%</div>
-              <span className="text-[11px] text-emerald-700 font-medium">+6% vs last month</span>
-            </div>
-            <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-              <span className="text-[12px] font-semibold uppercase text-[var(--text-muted)] block mb-1">Avg Refinement Time</span>
-              <div className="text-[28px] font-bold text-[var(--text)]">1.8m</div>
-              <span className="text-[11px] text-[var(--text-muted)]">Per flagged visit note</span>
-            </div>
-            <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-              <span className="text-[12px] font-semibold uppercase text-[var(--text-muted)] block mb-1">Critical Flags (Month)</span>
-              <div className="text-[28px] font-bold text-rose-700">2</div>
-              <span className="text-[11px] text-rose-700 font-medium">Both escalated to RN</span>
-            </div>
-            <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-              <span className="text-[12px] font-semibold uppercase text-[var(--text-muted)] block mb-1">Audit Compliance</span>
-              <div className="text-[28px] font-bold text-[var(--green-700)]">99.4%</div>
-              <span className="text-[11px] text-[var(--text-muted)]">State Medicaid standard</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 5. TAB 4: RULES (PRESERVED)                                               */}
-      {/* ========================================================================= */}
-      {activeTab === 'rules' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-[16px] font-bold text-[var(--text)]">Medicaid Compliance Rules</h3>
-              <p className="text-[12px] text-[var(--text-muted)]">Active inspection standards applied during AI Care Note coaching</p>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            {rulesList.map((rule) => (
-              <div key={rule.id} className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-[12px] font-bold text-[var(--green-900)] bg-[var(--green-100)] px-2 py-0.5 rounded">
-                      {rule.id}
-                    </span>
-                    <h4 className="font-bold text-[14px] text-[var(--text)]">{rule.name}</h4>
-                  </div>
-                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
-                    rule.severity === 'High' ? 'bg-rose-50 text-rose-800 border border-rose-200' : 'bg-amber-50 text-amber-800 border border-amber-200'
-                  }`}>
-                    {rule.severity} Severity
-                  </span>
-                </div>
-                <p className="text-[12px] text-[var(--text-muted)]">{rule.description}</p>
-                <div className="p-2.5 bg-[#F7F7F4] rounded-[6px] text-[11px] space-y-1">
-                  <div><strong>Non-compliant:</strong> &ldquo;{rule.exampleBad}&rdquo;</div>
-                  <div className="text-emerald-800 font-semibold"><strong>Compliant:</strong> &ldquo;{rule.exampleGood}&rdquo;</div>
-                </div>
-                <div className="text-[11px] text-stone-400">Statutory Authority: {rule.source}</div>
               </div>
-            ))}
+            )}
+
           </div>
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* 6. POP-OVER FOR HIGHLIGHTED PHRASES                                       */}
+      {/* 3. POP-OVER FOR UNDERLINED PHRASE                                         */}
       {/* ========================================================================= */}
-      {activeHighlightPopover && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-2xs animate-fade-in">
-          <div className="bg-white rounded-[12px] border border-[var(--border)] max-w-md w-full p-5 shadow-2xl space-y-3">
+      {activeFlagPopover && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-2xs animate-fadeIn">
+          <div className="bg-white rounded-[12px] border border-[var(--border)] max-w-sm w-full p-4 shadow-xl space-y-2 text-[13px]">
             <div className="flex items-start justify-between">
-              <div>
-                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
-                  activeHighlightPopover.category === 'safety' ? 'bg-rose-100 text-rose-900' : 'bg-amber-100 text-amber-900'
-                }`}>
-                  {activeHighlightPopover.category} issue
-                </span>
-                <h4 className="text-[15px] font-bold text-[var(--text)] mt-1">
-                  &ldquo;{activeHighlightPopover.phrase}&rdquo;
-                </h4>
+              <span className="font-bold text-[var(--text)]">&ldquo;{activeFlagPopover.phrase}&rdquo;</span>
+              <button type="button" onClick={() => setActiveFlagPopover(null)} className="text-stone-400 hover:text-stone-700">✕</button>
+            </div>
+            <p className="text-[12px] text-stone-600 leading-relaxed">{activeFlagPopover.plainWhy}</p>
+            {activeFlagPopover.suggestedReplacement && (
+              <div className="p-2 bg-emerald-50 rounded border border-emerald-200 text-[12px] text-emerald-900">
+                <strong>Suggested wording:</strong> &ldquo;{activeFlagPopover.suggestedReplacement}&rdquo;
               </div>
-              <button type="button" onClick={() => setActiveHighlightPopover(null)} className="text-stone-400 hover:text-stone-700">✕</button>
-            </div>
-
-            <div className="text-[12px] text-stone-600 space-y-1.5 leading-relaxed">
-              <div><strong>Rule:</strong> {activeHighlightPopover.ruleName}</div>
-              <div><strong>Why it&apos;s flagged:</strong> {activeHighlightPopover.plainWhy}</div>
-              <div><strong>Suggested correction:</strong> {activeHighlightPopover.plainFix}</div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border)]">
+            )}
+            <div className="flex justify-end gap-2 pt-2 border-t border-[var(--border)]">
               <button
                 type="button"
-                onClick={() => setActiveHighlightPopover(null)}
-                className="min-h-[30px] px-3 rounded-[6px] border border-[var(--border)] text-[12px] font-semibold text-[var(--text)] hover:bg-[#F0F2ED]"
+                onClick={() => setActiveFlagPopover(null)}
+                className="px-2.5 py-1 text-[12px] rounded border border-[var(--border)]"
               >
                 Dismiss
               </button>
-              {activeHighlightPopover.suggestedReplacement && (
+              {activeFlagPopover.suggestedReplacement && (
                 <button
                   type="button"
-                  onClick={() => handleUseSuggestedWording(activeHighlightPopover)}
-                  className="min-h-[30px] px-3.5 rounded-[6px] bg-[var(--green-700)] text-white text-[12px] font-semibold hover:bg-[var(--green-900)]"
+                  onClick={() => handleReplacePhrase(activeFlagPopover)}
+                  className="px-3 py-1 text-[12px] font-semibold rounded bg-[var(--green-700)] text-white hover:bg-[var(--green-900)]"
                 >
-                  Use suggested wording
+                  Use suggestion
                 </button>
               )}
             </div>
@@ -2067,28 +1651,26 @@ export const AuditPage: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* 7. COLLAPSIBLE DETAILS DRAWER (RIGHT EDGE)                                */}
+      {/* 4. DETAILS DRAWER (ICON IN HEADER): CLOSED BY DEFAULT                     */}
       {/* ========================================================================= */}
-      {showDetailsDrawer && (
-        <div className="fixed inset-0 z-50 flex justify-end animate-fade-in">
+      {isDetailsDrawerOpen && (
+        <div className="fixed inset-0 z-50 flex justify-end animate-fadeIn">
           <div
-            className="fixed inset-0 bg-black/40 backdrop-blur-2xs transition-opacity"
-            onClick={() => setShowDetailsDrawer(false)}
+            className="fixed inset-0 bg-black/30 backdrop-blur-2xs transition-opacity"
+            onClick={() => setIsDetailsDrawerOpen(false)}
           />
 
-          <div className="relative w-full max-w-lg bg-white h-full shadow-2xl flex flex-col z-10 border-l border-[var(--border)] overflow-hidden">
-            {/* Drawer Header */}
+          <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col z-10 border-l border-[var(--border)] overflow-hidden">
             <div className="p-4 border-b border-[var(--border)] bg-[#F7F7F4] flex items-center justify-between">
               <div>
-                <h3 className="text-[16px] font-bold text-[var(--text)]">Details & Audit Inspector</h3>
+                <h3 className="text-[15px] font-bold text-[var(--text)]">Details & Audit</h3>
                 <div className="text-[11px] text-[var(--text-muted)]">
-                  {activeNote.clientName} ({activeNote.clientId}) · Visit {activeNote.visitDate}
+                  {deIdentify(currentClient.name)} · {currentShift.date}
                 </div>
               </div>
-              <button type="button" onClick={() => setShowDetailsDrawer(false)} className="text-stone-500 hover:text-stone-800">✕</button>
+              <button type="button" onClick={() => setIsDetailsDrawerOpen(false)} className="text-stone-500 hover:text-stone-800">✕</button>
             </div>
 
-            {/* Drawer Tabs */}
             <div className="flex border-b border-[var(--border)] px-4 bg-white text-[12px] font-semibold">
               <button
                 type="button"
@@ -2097,7 +1679,7 @@ export const AuditPage: React.FC = () => {
                   detailsDrawerTab === 'rules' ? 'border-[var(--green-700)] text-[var(--green-700)]' : 'border-transparent text-stone-500'
                 }`}
               >
-                Rules triggered ({activeNote.flags.length})
+                Rules applied
               </button>
               <button
                 type="button"
@@ -2128,39 +1710,41 @@ export const AuditPage: React.FC = () => {
               </button>
             </div>
 
-            {/* Drawer Body */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-4 text-[12px]">
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 text-[12px]">
               {detailsDrawerTab === 'rules' && (
-                <div className="space-y-3">
-                  {activeNote.flags.map((f, i) => (
-                    <div key={i} className="p-3 bg-[#F7F7F4] border border-[var(--border)] rounded-[8px] space-y-1">
-                      <div className="font-bold text-[var(--text)]">{f.ruleName}</div>
-                      <div className="text-stone-600">Trigger: &ldquo;{f.phrase}&rdquo;</div>
-                      <div className="text-[11px] text-stone-500">{f.plainWhy}</div>
-                    </div>
-                  ))}
+                <div className="space-y-2">
+                  <div className="p-2.5 bg-[#F7F7F4] rounded border border-[var(--border)] space-y-1">
+                    <div className="font-bold text-[var(--text)]">Objective Language Rule</div>
+                    <div className="text-stone-600">Colorado 10 CCR 2505-10 § 8.510</div>
+                    <div className="text-[11px] text-stone-500">Requires factual, non-emotional statements of observable behavior.</div>
+                  </div>
+                  <div className="p-2.5 bg-[#F7F7F4] rounded border border-[var(--border)] space-y-1">
+                    <div className="font-bold text-[var(--text)]">Medication Administration Timing</div>
+                    <div className="text-stone-600">HCPF Care Plan Requirement § 8.500</div>
+                    <div className="text-[11px] text-stone-500">Scheduled reminders must specify exact time and client response.</div>
+                  </div>
                 </div>
               )}
 
               {detailsDrawerTab === 'context' && (
                 <div className="space-y-3">
                   <div>
-                    <span className="font-bold text-[var(--text)]">Authorized Hours:</span>
-                    <div className="text-stone-600">{activeNote.clientContext.authorizedHours}</div>
+                    <div className="font-bold text-[var(--text)]">Authorized Hours:</div>
+                    <div className="text-stone-600">{currentClient.authorizedHours}</div>
                   </div>
                   <div>
-                    <span className="font-bold text-[var(--text)]">Care Plan Goals:</span>
+                    <div className="font-bold text-[var(--text)]">Care Plan Goals:</div>
                     <ul className="list-disc pl-4 text-stone-600 space-y-1 mt-1">
-                      {activeNote.clientContext.carePlanGoals.map((g, i) => (
+                      {currentClient.carePlanGoals.map((g, i) => (
                         <li key={i}>{g}</li>
                       ))}
                     </ul>
                   </div>
                   <div>
-                    <span className="font-bold text-[var(--text)]">Last 3 Visit Notes:</span>
-                    <div className="space-y-1.5 mt-1">
-                      {activeNote.clientContext.lastThreeNotes.map((n, i) => (
-                        <div key={i} className="p-2 bg-[#F7F7F4] rounded border border-[var(--border)] text-[11px] text-stone-700">
+                    <div className="font-bold text-[var(--text)]">Last 3 Visit Notes:</div>
+                    <div className="space-y-1 mt-1">
+                      {currentClient.lastThreeNotes.map((n, i) => (
+                        <div key={i} className="p-2 bg-[#F7F7F4] rounded border border-[var(--border)] text-[11px]">
                           {n}
                         </div>
                       ))}
@@ -2170,45 +1754,43 @@ export const AuditPage: React.FC = () => {
               )}
 
               {detailsDrawerTab === 'history' && (
-                <div className="space-y-3">
-                  <div className="p-3 bg-white border border-[var(--border)] rounded-[8px] space-y-1">
-                    <div className="flex justify-between font-bold text-[var(--text)]">
-                      <span>v1.0 Original Submission</span>
-                      <span className="text-[10px] text-stone-400">11:35 AM</span>
-                    </div>
-                    <p className="text-stone-600 italic text-[11px]">&ldquo;{activeNote.originalText}&rdquo;</p>
+                <div className="space-y-2">
+                  <div className="p-2.5 bg-white border border-[var(--border)] rounded space-y-0.5">
+                    <div className="font-semibold text-[var(--text)]">v1.0 Original Submission</div>
+                    <div className="text-[11px] text-stone-500">Submitted by {deIdentify(currentShift.caregiver)}</div>
                   </div>
-                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-[8px] space-y-1">
-                    <div className="flex justify-between font-bold text-emerald-950">
-                      <span>v2.0 AI Coach Refined Draft</span>
-                      <span className="text-[10px] text-emerald-700">11:36 AM</span>
-                    </div>
-                    <p className="text-emerald-900 text-[11px]">{generatedRefinedNote || 'Pending resolution'}</p>
+                  <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded space-y-0.5">
+                    <div className="font-semibold text-emerald-950">v2.0 Refined Draft</div>
+                    <div className="text-[11px] text-emerald-800">Generated per IHSS objective guidelines</div>
                   </div>
                 </div>
               )}
 
               {detailsDrawerTab === 'audit' && (
-                <div className="space-y-2">
-                  {activeNote.timeline.map((evt, i) => (
-                    <div key={i} className="p-2.5 bg-[#F7F7F4] rounded border border-[var(--border)] text-[11px]">
-                      <div className="flex justify-between text-stone-500">
-                        <span>{evt.actor}</span>
-                        <span>{evt.time}</span>
-                      </div>
-                      <div className="font-semibold text-[var(--text)] mt-0.5">{evt.title}</div>
-                      {evt.note && <div className="text-stone-500 mt-0.5">{evt.note}</div>}
+                <div className="space-y-1.5 text-[11px]">
+                  <div className="p-2 bg-[#F7F7F4] rounded border border-[var(--border)]">
+                    <div className="flex justify-between text-stone-500">
+                      <span>System</span>
+                      <span>8:02 AM</span>
                     </div>
-                  ))}
+                    <div className="font-medium mt-0.5">EVV Clock-in verified with GPS coordinates</div>
+                  </div>
+                  <div className="p-2 bg-[#F7F7F4] rounded border border-[var(--border)]">
+                    <div className="flex justify-between text-stone-500">
+                      <span>{deIdentify(currentShift.caregiver)}</span>
+                      <span>11:32 AM</span>
+                    </div>
+                    <div className="font-medium mt-0.5">Shift note submitted via mobile app</div>
+                  </div>
                 </div>
               )}
             </div>
 
-            <div className="p-4 border-t border-[var(--border)] bg-[#F7F7F4] flex justify-end">
+            <div className="p-3 border-t border-[var(--border)] bg-[#F7F7F4] flex justify-end">
               <button
                 type="button"
-                onClick={() => setShowDetailsDrawer(false)}
-                className="min-h-[30px] px-4 rounded-[6px] bg-[var(--green-700)] text-white text-[12px] font-semibold hover:bg-[var(--green-900)]"
+                onClick={() => setIsDetailsDrawerOpen(false)}
+                className="px-4 py-1.5 rounded-[6px] bg-[var(--green-700)] text-white text-[12px] font-semibold hover:bg-[var(--green-900)]"
               >
                 Done
               </button>
@@ -2218,139 +1800,111 @@ export const AuditPage: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* 8. INCIDENT CREATION MODAL                                                */}
+      {/* 5. INCIDENT REPORT MODAL (SAFETY CASE)                                    */}
       {/* ========================================================================= */}
-      {showIncidentModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-2xs animate-fade-in">
-          <div className="bg-white rounded-[12px] border border-[var(--border)] max-w-lg w-full p-6 shadow-2xl space-y-4">
+      {isIncidentModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-2xs animate-fadeIn">
+          <div className="bg-white rounded-[12px] border border-[var(--border)] max-w-md w-full p-5 shadow-2xl space-y-3 text-[13px]">
             <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
-              <div>
-                <h3 className="text-[16px] font-bold text-rose-900 flex items-center gap-1.5">
-                  <span>🚨</span>
-                  <span>Create Medicaid Critical Incident Case</span>
-                </h3>
-                <div className="text-[11px] text-[var(--text-muted)]">
-                  State 24-Hour Reporting Standard · Client: {activeNote.clientName}
-                </div>
-              </div>
-              <button type="button" onClick={() => setShowIncidentModal(false)}>✕</button>
+              <h3 className="font-bold text-rose-950 flex items-center gap-1.5 text-[15px]">
+                <span>🚨</span>
+                <span>Medicaid Critical Incident Report</span>
+              </h3>
+              <button type="button" onClick={() => setIsIncidentModalOpen(false)}>✕</button>
             </div>
 
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                showToast(`Critical incident report logged for ${activeNote.clientName}. Routed to Compliance.`);
-                setShowIncidentModal(false);
-              }}
-              className="space-y-3 text-[12px]"
-            >
+            <div className="space-y-2">
               <div>
-                <label className="block font-semibold text-[var(--text)] mb-1">Incident Category</label>
-                <select
-                  value={incidentSeverity}
-                  onChange={(e) => setIncidentSeverity(e.target.value)}
-                  className="w-full p-2 bg-[#F7F7F4] border border-[var(--border)] rounded"
-                >
-                  <option>Critical - Physical Force / Non-Consensual Care</option>
-                  <option>Client Fall Resulting in Injury</option>
-                  <option>Medication Administration Error</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-[var(--text)] mb-1">Summary Description</label>
-                <textarea
-                  rows={3}
-                  required
-                  defaultValue={activeNote.originalText}
-                  className="w-full p-2 bg-[#F7F7F4] border border-[var(--border)] rounded font-mono text-[11px]"
+                <label className="block font-semibold text-[var(--text)] mb-1 text-[12px]">Client</label>
+                <input
+                  type="text"
+                  disabled
+                  value={`${currentClient.name} (${currentClient.program} · ${currentClient.maskedId})`}
+                  className="w-full p-2 bg-[#F7F7F4] border border-[var(--border)] rounded text-[12px]"
                 />
               </div>
 
-              <div className="p-2.5 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-900">
-                Notice: Submitting logs an immutable HIPAA audit event and alerts the Supervising RN.
+              <div>
+                <label className="block font-semibold text-[var(--text)] mb-1 text-[12px]">Event Summary</label>
+                <textarea
+                  rows={3}
+                  defaultValue={currentShift.roughNote}
+                  className="w-full p-2 bg-[#F7F7F4] border border-[var(--border)] rounded text-[12px]"
+                />
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowIncidentModal(false)}
-                  className="min-h-[32px] px-3.5 rounded border border-[var(--border)]"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="min-h-[32px] px-4 rounded bg-rose-700 text-white font-bold hover:bg-rose-800"
-                >
-                  Submit Incident to HCPF
-                </button>
+              <div className="p-2 bg-amber-50 rounded border border-amber-200 text-[11px] text-amber-900">
+                Notice: Dispatches automated 24-hour notification to HCPF and locks shift note from further editing.
               </div>
-            </form>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-[var(--border)]">
+              <button
+                type="button"
+                onClick={() => setIsIncidentModalOpen(false)}
+                className="px-3.5 py-1.5 rounded border border-[var(--border)] text-[12px]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  showToast('Critical incident report submitted to HCPF & Clinical Supervisor.');
+                  setIsIncidentModalOpen(false);
+                }}
+                className="px-4 py-1.5 rounded bg-rose-700 text-white font-semibold text-[12px] hover:bg-rose-800"
+              >
+                Submit Incident Case
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* 9. FLOATING LILISARE ASSISTANT CHAT                                       */}
+      {/* 6. FLOATING LILISARE ASSISTANT CHAT                                       */}
       {/* ========================================================================= */}
       <div className="fixed bottom-6 right-6 z-40">
-        {!showAssistant ? (
+        {!isAssistantOpen ? (
           <button
             type="button"
-            onClick={() => setShowAssistant(true)}
-            className="min-h-[44px] px-4 rounded-full bg-[var(--green-900)] text-white shadow-xl hover:bg-[var(--green-700)] transition flex items-center gap-2 font-semibold text-[13px] border border-white/20"
+            onClick={() => setIsAssistantOpen(true)}
+            className="min-h-[42px] px-4 rounded-full bg-[var(--green-900)] text-white shadow-xl hover:bg-[var(--green-700)] transition flex items-center gap-2 font-semibold text-[13px] border border-white/20"
           >
             <span>💬</span>
             <span>LiliSare Assistant</span>
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
           </button>
         ) : (
-          <div className="bg-[var(--card)] border border-[var(--border)] rounded-[14px] shadow-2xl w-[360px] h-[480px] flex flex-col overflow-hidden animate-slideUp">
-            {/* Chat Header */}
+          <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] shadow-2xl w-[350px] h-[460px] flex flex-col overflow-hidden animate-slideUp">
             <div className="p-3 bg-[var(--green-900)] text-white flex items-center justify-between">
               <div>
                 <div className="font-bold text-[13px]">LiliSare Assistant</div>
                 <div className="text-[10px] text-emerald-300">
-                  Scoped: {activeNote.clientName} · Visit {activeNote.visitDate}
+                  Scoped: {deIdentify(currentClient.name)} · {currentShift.date}
                 </div>
               </div>
-              <button type="button" onClick={() => setShowAssistant(false)} className="text-white/70 hover:text-white">✕</button>
+              <button type="button" onClick={() => setIsAssistantOpen(false)} className="text-white/70 hover:text-white">✕</button>
             </div>
 
-            {/* Chat Messages */}
             <div className="flex-1 overflow-y-auto p-3 space-y-2 text-[12px]">
               {assistantMessages.map((m, idx) => (
                 <div
                   key={idx}
                   className={`p-2.5 rounded-[8px] leading-relaxed ${
-                    m.sender === 'user'
-                      ? 'bg-[var(--green-700)] text-white ml-6 text-right'
-                      : 'bg-[#F7F7F4] border border-[var(--border)] text-[var(--text)] mr-4 space-y-1.5'
+                    m.sender === 'user' ? 'bg-[var(--green-700)] text-white ml-6 text-right' : 'bg-[#F7F7F4] border border-[var(--border)] mr-4'
                   }`}
                 >
-                  <div>{m.text}</div>
-                  {m.source && <div className="text-[10px] text-stone-400 font-mono">Source: {m.source}</div>}
-                  {m.actionButton && (
-                    <button
-                      type="button"
-                      onClick={() => handleAssistantAction(m.actionButton!.actionId)}
-                      className="mt-1 px-2.5 py-1 rounded bg-[var(--green-700)] text-white font-semibold text-[11px] block hover:bg-[var(--green-900)]"
-                    >
-                      {m.actionButton.label}
-                    </button>
-                  )}
+                  {m.text}
                 </div>
               ))}
             </div>
 
-            {/* Quick Prompts */}
             <div className="p-2 border-t border-[var(--border)] bg-[#F7F7F4] flex gap-1 overflow-x-auto text-[11px]">
-              {['Why is this flagged?', 'Refine note', 'Check incident rules'].map((p) => (
+              {['Why is grumpy flagged?', 'Check Medicaid rule', 'Refine note'].map((p) => (
                 <button
                   key={p}
                   type="button"
-                  onClick={() => sendAssistantMessage(p)}
+                  onClick={() => handleSendAssistant(p)}
                   className="px-2 py-0.5 rounded bg-white border border-[var(--border)] text-stone-700 whitespace-nowrap hover:bg-stone-100"
                 >
                   {p}
@@ -2358,7 +1912,6 @@ export const AuditPage: React.FC = () => {
               ))}
             </div>
 
-            {/* Chat Input */}
             <div className="p-2 bg-white border-t border-[var(--border)] flex items-center gap-1.5">
               <input
                 type="text"
@@ -2366,16 +1919,16 @@ export const AuditPage: React.FC = () => {
                 onChange={(e) => setAssistantInput(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && assistantInput.trim()) {
-                    sendAssistantMessage(assistantInput.trim());
+                    handleSendAssistant(assistantInput.trim());
                   }
                 }}
-                placeholder="Ask about note, rules, or action..."
+                placeholder="Ask assistant about this shift…"
                 className="flex-1 h-[32px] px-2.5 bg-[#F7F7F4] border border-[var(--border)] rounded text-[12px] focus:outline-none"
               />
               <button
                 type="button"
                 onClick={() => {
-                  if (assistantInput.trim()) sendAssistantMessage(assistantInput.trim());
+                  if (assistantInput.trim()) handleSendAssistant(assistantInput.trim());
                 }}
                 className="h-[32px] px-3 bg-[var(--green-700)] text-white font-bold rounded text-[12px]"
               >
@@ -2387,30 +1940,76 @@ export const AuditPage: React.FC = () => {
       </div>
 
       {/* ========================================================================= */}
-      {/* 10. ASSISTANT ACTION CONFIRMATION MODAL                                   */}
+      {/* 7. PRESERVED TABS: NEW NOTE, QUALITY, RULES                               */}
       {/* ========================================================================= */}
-      {pendingConfirmAction && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-2xs flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white border border-[var(--border)] rounded-[12px] p-5 max-w-md w-full shadow-2xl space-y-3">
-            <h3 className="text-[16px] font-bold text-[var(--text)]">{pendingConfirmAction.label}</h3>
-            <p className="text-[12px] text-[var(--text-muted)] leading-relaxed">
-              {pendingConfirmAction.description}
-            </p>
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setPendingConfirmAction(null)}
-                className="min-h-[30px] px-3.5 rounded border border-[var(--border)] text-[12px] font-semibold"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={pendingConfirmAction.onConfirm}
-                className="min-h-[30px] px-4 rounded bg-[var(--green-700)] text-white text-[12px] font-semibold hover:bg-[var(--green-900)]"
-              >
-                Confirm
-              </button>
+      {activeTopTab === 'new-note' && (
+        <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-6 max-w-2xl mx-auto space-y-4">
+          <h3 className="text-[16px] font-bold text-[var(--text)]">Create Note for Caseload</h3>
+          <div>
+            <label className="block text-[12px] font-semibold mb-1">Client</label>
+            <select className="w-full p-2 bg-[#F7F7F4] border border-[var(--border)] rounded text-[13px]">
+              {CLIENTS_DATA.map((c) => (
+                <option key={c.id} value={c.id}>{c.name} ({c.program} · {c.maskedId})</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[12px] font-semibold mb-1">Shift Notes</label>
+            <textarea rows={4} placeholder="Type visit care details..." className="w-full p-2.5 bg-[#F7F7F4] border border-[var(--border)] rounded text-[13px]" />
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              showToast('Note submitted and sent to Note Coach.');
+              setActiveTopTab('coach');
+            }}
+            className="min-h-[36px] px-5 rounded-[8px] bg-[var(--green-700)] text-white text-[13px] font-semibold"
+          >
+            Submit Note
+          </button>
+        </div>
+      )}
+
+      {activeTopTab === 'quality' && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+            <span className="text-[12px] font-semibold uppercase text-[var(--text-muted)] block mb-1">First-Pass Rate</span>
+            <div className="text-[28px] font-bold text-[var(--text)]">84%</div>
+            <span className="text-[11px] text-emerald-700 font-medium">+6% vs last month</span>
+          </div>
+          <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+            <span className="text-[12px] font-semibold uppercase text-[var(--text-muted)] block mb-1">Avg Coaching Time</span>
+            <div className="text-[28px] font-bold text-[var(--text)]">1.8m</div>
+            <span className="text-[11px] text-[var(--text-muted)]">Per flagged visit note</span>
+          </div>
+          <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+            <span className="text-[12px] font-semibold uppercase text-[var(--text-muted)] block mb-1">Critical Flags</span>
+            <div className="text-[28px] font-bold text-rose-700">2</div>
+            <span className="text-[11px] text-rose-700 font-medium">Both escalated to RN</span>
+          </div>
+          <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+            <span className="text-[12px] font-semibold uppercase text-[var(--text-muted)] block mb-1">Medicaid Pass</span>
+            <div className="text-[28px] font-bold text-[var(--green-700)]">99.4%</div>
+            <span className="text-[11px] text-[var(--text-muted)]">State audit ready</span>
+          </div>
+        </div>
+      )}
+
+      {activeTopTab === 'rules' && (
+        <div className="bg-[var(--card)] border border-[var(--border)] rounded-[12px] p-5 space-y-3">
+          <h3 className="font-bold text-[15px] text-[var(--text)]">Active Program Rulebook</h3>
+          <div className="divide-y divide-[var(--border)] text-[12px]">
+            <div className="py-2.5 space-y-1">
+              <div className="font-bold">Objective facts only (no emotional or judgmental words)</div>
+              <div className="text-[var(--text-muted)]">Colorado 10 CCR 2505-10 § 8.510</div>
+            </div>
+            <div className="py-2.5 space-y-1">
+              <div className="font-bold">Safety escalation: physical force or non-consensual care</div>
+              <div className="text-[var(--text-muted)]">State Medicaid Critical Incident Rule § 8.500</div>
+            </div>
+            <div className="py-2.5 space-y-1">
+              <div className="font-bold">Exact times for medications and nursing tasks</div>
+              <div className="text-[var(--text-muted)]">Colorado Board of Nursing Chapter 13</div>
             </div>
           </div>
         </div>
