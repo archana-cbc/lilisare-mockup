@@ -20,9 +20,6 @@ export const LoginPage: React.FC = () => {
   const [step, setStep] = useState<'credentials' | 'mfa' | 'loading'>('credentials');
   const [mfaCode, setMfaCode] = useState<string[]>(['4', '8', '2', '9', '1', '0']);
 
-  // Mobile Workspace Category Filter: 'all' | 'Staff' | 'External'
-  const [activeCategoryFilter, setActiveCategoryFilter] = useState<'all' | 'Staff' | 'External'>('all');
-
   // Request Access Modal
   const [isRequestModalOpen, setIsRequestModalOpen] = useState<boolean>(false);
   const [reqName, setReqName] = useState('');
@@ -140,295 +137,185 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen w-full flex flex-col lg:flex-row bg-white selection:bg-emerald-800 selection:text-white">
+    <div className="min-h-screen lg:h-screen lg:overflow-hidden w-full flex flex-col lg:flex-row bg-white selection:bg-emerald-800 selection:text-white">
       
       {/* ========================================================================= */}
-      {/* LEFT PANEL: Deep Forest Green Brand & Workspace Showcase */}
-      {/* Edge-to-edge on desktop (no wasted side whitespace), responsive on mobile/tablet */}
+      {/* LEFT PANEL: Deep Forest Green Brand & Clean Minimal Workspace Selector */}
+      {/* Edge-to-edge, single-screen height (never scrollable on desktop) */}
       {/* ========================================================================= */}
       <section
         aria-label="LiliSare Workspace Selector"
         style={{ backgroundColor: 'var(--green-900, #1b381e)' }}
-        className="w-full lg:w-[58%] xl:w-[60%] 2xl:w-[62%] min-h-screen text-white p-5 sm:p-8 lg:p-10 xl:p-14 2xl:p-16 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-emerald-950/40 relative shadow-2xl"
+        className="w-full lg:w-[58%] xl:w-[60%] min-h-screen lg:min-h-0 lg:h-full text-white p-6 sm:p-8 lg:p-8 xl:p-12 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-emerald-950/40 relative shadow-2xl"
       >
-        <div className="w-full max-w-4xl mx-auto flex flex-col justify-between h-full space-y-6">
+        <div className="w-full max-w-4xl mx-auto flex flex-col justify-between h-full space-y-4 lg:space-y-0">
           
-          {/* Top Brand Bar & Live Status Indicator */}
-          <div>
-            <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-white/10">
-              <div className="flex items-center gap-3.5">
-                <div className="bg-white rounded-2xl p-2.5 w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center shadow-md shrink-0">
-                  <img
-                    src="/lilisare-logo.png"
-                    alt="LiliSare Logo"
-                    className="w-full h-auto object-contain max-h-9"
-                  />
-                </div>
-                <div>
-                  <div className="font-extrabold text-xl sm:text-2xl tracking-tight text-white flex items-center gap-2">
-                    <span>LiliSare</span>
-                    <span className="text-white/50 font-normal text-xs sm:text-sm">/ LiliSphere</span>
-                  </div>
-                  <div className="text-xs sm:text-sm text-emerald-200/80 font-medium">
-                    Operating system for home care
-                  </div>
-                </div>
-              </div>
-
-              {/* Systems Status Pill */}
-              <div className="inline-flex items-center gap-2 bg-emerald-500/15 border border-emerald-400/30 px-3.5 py-1.5 rounded-full text-xs font-semibold text-emerald-300 backdrop-blur-xs">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>Systems operational</span>
-              </div>
+          {/* Top Brand Bar */}
+          <div className="flex items-center gap-3 pb-4 border-b border-white/10 shrink-0">
+            <div className="bg-white rounded-xl p-2 w-11 h-11 flex items-center justify-center shadow-md shrink-0">
+              <img
+                src="/lilisare-logo.png"
+                alt="LiliSare Logo"
+                className="w-full h-auto object-contain max-h-7"
+              />
             </div>
-
-            {/* Section Header & Subtitle */}
-            <div className="mt-6 mb-4 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
-              <div>
-                <h2 className="text-xs uppercase font-bold text-emerald-300/90 tracking-widest">
-                  Choose your workspace (demo)
-                </h2>
-                <p className="text-xs sm:text-sm text-white/80 mt-1">
-                  Selecting a workspace fills demo credentials, role permissions, and views.
-                </p>
+            <div>
+              <div className="font-extrabold text-xl sm:text-2xl tracking-tight text-white flex items-center gap-2">
+                <span>LiliSare</span>
+                <span className="text-white/50 font-normal text-xs sm:text-sm"></span>
               </div>
-
-              {/* Category Filter Pills (Convenient on all screen sizes) */}
-              <div className="flex items-center gap-1.5 bg-black/20 p-1 rounded-xl self-start sm:self-auto border border-white/10">
-                <button
-                  type="button"
-                  onClick={() => setActiveCategoryFilter('all')}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
-                    activeCategoryFilter === 'all'
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'text-white/70 hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  All (8)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveCategoryFilter('Staff')}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
-                    activeCategoryFilter === 'Staff'
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'text-white/70 hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  Staff (5)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveCategoryFilter('External')}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
-                    activeCategoryFilter === 'External'
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'text-white/70 hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  External (3)
-                </button>
+              <div className="text-xs text-emerald-200/80 font-medium">
+                Operating system for home care
               </div>
-            </div>
-
-            {/* WORKSPACE TILES GRID: Fully Responsive across Mobile, Tablet & Desktop */}
-            <div className="space-y-4">
-              
-              {/* Group 1: Staff Workspaces */}
-              {(activeCategoryFilter === 'all' || activeCategoryFilter === 'Staff') && (
-                <div>
-                  <div className="text-[11px] font-bold text-white/60 uppercase tracking-wider mb-2 flex items-center justify-between">
-                    <span>Staff Workspaces</span>
-                    <span className="text-[10px] text-white/40 font-normal">Internal operations</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {DEMO_WORKSPACES.filter((w) => w.category === 'Staff').map((ws) => {
-                      const isSelected = selectedWorkspace.id === ws.id;
-                      return (
-                        <button
-                          key={ws.id}
-                          type="button"
-                          onClick={() => handleSelectWorkspace(ws)}
-                          className={`text-left p-3 sm:p-3.5 rounded-2xl transition border flex items-start gap-3 focus:outline-none focus:ring-2 focus:ring-emerald-400 group cursor-pointer ${
-                            isSelected
-                              ? 'bg-white/20 border-emerald-400 ring-1 ring-emerald-400/50 shadow-lg text-white'
-                              : 'bg-white/10 hover:bg-white/15 border-white/10 hover:border-white/20 text-white/85'
-                          }`}
-                        >
-                          <div
-                            className={`p-2 rounded-xl shrink-0 transition ${
-                              isSelected
-                                ? 'bg-emerald-500 text-white shadow-sm'
-                                : 'bg-white/10 text-emerald-200 group-hover:bg-white/20'
-                            }`}
-                          >
-                            {renderTileIcon(ws.icon)}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="font-bold text-xs sm:text-sm truncate flex items-center justify-between">
-                              <span className="text-white group-hover:text-emerald-200 transition">{ws.name}</span>
-                              {isSelected && (
-                                <span className="text-emerald-400 font-extrabold text-sm ml-1">✓</span>
-                              )}
-                            </div>
-                            <div className="text-[11px] sm:text-xs text-white/70 line-clamp-1 mt-0.5">
-                              {ws.oneLine}
-                            </div>
-                            <div className="text-[10px] text-white/50 mt-1">
-                              Simulating: <span className="font-medium text-white/75">{ws.user}</span>
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Group 2: External Portals */}
-              {(activeCategoryFilter === 'all' || activeCategoryFilter === 'External') && (
-                <div>
-                  <div className="text-[11px] font-bold text-white/60 uppercase tracking-wider mb-2 flex items-center justify-between">
-                    <span>External Portals</span>
-                    <span className="text-[10px] text-white/40 font-normal">Clients, family & partners</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                    {DEMO_WORKSPACES.filter((w) => w.category === 'External').map((ws) => {
-                      const isSelected = selectedWorkspace.id === ws.id;
-                      return (
-                        <button
-                          key={ws.id}
-                          type="button"
-                          onClick={() => handleSelectWorkspace(ws)}
-                          className={`text-left p-3 sm:p-3.5 rounded-2xl transition border flex flex-col justify-between focus:outline-none focus:ring-2 focus:ring-emerald-400 group cursor-pointer ${
-                            isSelected
-                              ? 'bg-white/20 border-emerald-400 ring-1 ring-emerald-400/50 shadow-lg text-white'
-                              : 'bg-white/10 hover:bg-white/15 border-white/10 hover:border-white/20 text-white/85'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between mb-2">
-                            <div
-                              className={`p-2 rounded-xl shrink-0 transition ${
-                                isSelected
-                                  ? 'bg-emerald-500 text-white shadow-sm'
-                                  : 'bg-white/10 text-emerald-200 group-hover:bg-white/20'
-                              }`}
-                            >
-                              {renderTileIcon(ws.icon)}
-                            </div>
-                            {isSelected && (
-                              <span className="text-emerald-400 text-xs font-bold bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-400/30">
-                                ✓ Active
-                              </span>
-                            )}
-                          </div>
-                          <div>
-                            <div className="font-bold text-xs sm:text-sm text-white group-hover:text-emerald-200 transition truncate">
-                              {ws.name}
-                            </div>
-                            <div className="text-[10px] sm:text-xs text-white/70 line-clamp-1 mt-0.5">
-                              {ws.oneLine}
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Dynamic Summary of Chosen Workspace */}
-            <div className="mt-5 p-4 sm:p-5 rounded-2xl bg-white/10 border border-white/15 backdrop-blur-xs shadow-inner">
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-sm sm:text-base text-white">
-                    {selectedWorkspace.name} Workspace
-                  </span>
-                  <span className="bg-emerald-400/20 text-emerald-300 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-emerald-400/30">
-                    {selectedWorkspace.category}
-                  </span>
-                </div>
-                <div className="text-[11px] text-emerald-200/90 font-medium">
-                  {selectedWorkspace.allowedPages.length === 20 ? 'Full System Clearance (All 20 Modules)' : `${selectedWorkspace.allowedPages.length} Modules Scope`}
-                </div>
-              </div>
-
-              <p className="text-xs sm:text-sm text-white/85 leading-relaxed mb-3">
-                {selectedWorkspace.description}
-              </p>
-
-              <div className="text-[11px] font-bold text-emerald-200 uppercase tracking-wider mb-1.5">
-                What you can do here:
-              </div>
-              <ul className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-white/85">
-                {selectedWorkspace.highlights.map((h, i) => (
-                  <li key={i} className="flex items-start gap-1.5 leading-snug bg-black/15 p-2 rounded-xl border border-white/5">
-                    <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                    <span>{h}</span>
-                  </li>
-                ))}
-              </ul>
             </div>
           </div>
 
-          {/* Bottom Trust & Footer (Clean on Desktop & Mobile) */}
-          <div className="pt-6 border-t border-white/15 text-xs text-white/75 space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 font-medium text-xs">
-              <span className="flex items-center gap-2 bg-white/5 px-2.5 py-1.5 rounded-xl border border-white/5">
-                <span className="text-sm">🛡️</span> Role-based access
-              </span>
-              <span className="flex items-center gap-2 bg-white/5 px-2.5 py-1.5 rounded-xl border border-white/5">
-                <span className="text-sm">📋</span> Every view is logged
-              </span>
-              <span className="flex items-center gap-2 bg-white/5 px-2.5 py-1.5 rounded-xl border border-white/5">
-                <span className="text-sm">🔒</span> HIPAA-protected data
-              </span>
+          {/* Clean Workspace Selector (Staff & External) */}
+          <div className="my-auto py-2 space-y-4">
+            
+            {/* Staff Workspaces */}
+            <div>
+              <div className="text-[11px] font-bold text-white/50 uppercase tracking-wider mb-2 flex items-center justify-between">
+                <span>Staff Workspaces</span>
+                <span className="text-[10px] text-white/40 font-normal">Internal operations</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {DEMO_WORKSPACES.filter((w) => w.category === 'Staff').map((ws) => {
+                  const isSelected = selectedWorkspace.id === ws.id;
+                  return (
+                    <button
+                      key={ws.id}
+                      type="button"
+                      onClick={() => handleSelectWorkspace(ws)}
+                      className={`text-left p-2.5 sm:p-3 rounded-2xl transition border flex items-center gap-3 focus:outline-none focus:ring-2 focus:ring-emerald-400 group cursor-pointer ${
+                        isSelected
+                          ? 'bg-white/20 border-emerald-400 ring-1 ring-emerald-400/50 shadow-md text-white'
+                          : 'bg-white/10 hover:bg-white/15 border-white/10 hover:border-white/20 text-white/85'
+                      }`}
+                    >
+                      <div
+                        className={`p-2 rounded-xl shrink-0 transition ${
+                          isSelected
+                            ? 'bg-emerald-500 text-white shadow-xs'
+                            : 'bg-white/10 text-emerald-200 group-hover:bg-white/20'
+                        }`}
+                      >
+                        {renderTileIcon(ws.icon)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-xs sm:text-sm truncate flex items-center justify-between">
+                          <span className="text-white group-hover:text-emerald-200 transition">{ws.name}</span>
+                          {isSelected && (
+                            <span className="text-emerald-400 font-extrabold text-xs ml-1">✓</span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-white/70 line-clamp-1 mt-0.5">
+                          {ws.oneLine}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between text-[11px] text-white/50 pt-2 gap-1">
-              <span>© 2026 LiliSare · All rights reserved</span>
-              <span>256-bit encrypted in transit and at rest</span>
+            {/* External Portals */}
+            <div>
+              <div className="text-[11px] font-bold text-white/50 uppercase tracking-wider mb-2 flex items-center justify-between">
+                <span>External Portals</span>
+                <span className="text-[10px] text-white/40 font-normal">Clients, family & partners</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {DEMO_WORKSPACES.filter((w) => w.category === 'External').map((ws) => {
+                  const isSelected = selectedWorkspace.id === ws.id;
+                  return (
+                    <button
+                      key={ws.id}
+                      type="button"
+                      onClick={() => handleSelectWorkspace(ws)}
+                      className={`text-left p-2.5 sm:p-3 rounded-2xl transition border flex flex-col justify-between focus:outline-none focus:ring-2 focus:ring-emerald-400 group cursor-pointer ${
+                        isSelected
+                          ? 'bg-white/20 border-emerald-400 ring-1 ring-emerald-400/50 shadow-md text-white'
+                          : 'bg-white/10 hover:bg-white/15 border-white/10 hover:border-white/20 text-white/85'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div
+                          className={`p-1.5 rounded-xl shrink-0 transition ${
+                            isSelected
+                              ? 'bg-emerald-500 text-white shadow-xs'
+                              : 'bg-white/10 text-emerald-200 group-hover:bg-white/20'
+                          }`}
+                        >
+                          {renderTileIcon(ws.icon)}
+                        </div>
+                        {isSelected && (
+                          <span className="text-emerald-400 text-[10px] font-bold bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-400/30">
+                            ✓ Active
+                          </span>
+                        )}
+                      </div>
+                      <div>
+                        <div className="font-bold text-xs text-white group-hover:text-emerald-200 transition truncate">
+                          {ws.name}
+                        </div>
+                        <div className="text-[10px] text-white/70 line-clamp-1 mt-0.5">
+                          {ws.oneLine}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
+
+          </div>
+
+          {/* Clean Minimal Footer */}
+          <div className="flex items-center justify-between text-[11px] text-white/50 pt-3 border-t border-white/10 shrink-0">
+            <span>© 2026 LiliSare · All rights reserved</span>
+            <span>256-bit encrypted in transit and at rest</span>
           </div>
 
         </div>
       </section>
 
       {/* ========================================================================= */}
-      {/* RIGHT PANEL: Authentication & MFA Form */}
-      {/* Edge-to-edge on desktop (no wasted right whitespace), cleanly centered form */}
+      {/* RIGHT PANEL: Clean Minimal Sign In & MFA Card */}
+      {/* Edge-to-edge, single-screen height (never scrollable on desktop) */}
       {/* ========================================================================= */}
       <section
         aria-label="Sign In Credentials Form"
-        className="w-full lg:w-[42%] xl:w-[40%] 2xl:w-[38%] min-h-screen bg-[#FAFAF8] lg:bg-white flex flex-col justify-between p-6 sm:p-10 lg:p-12 xl:p-16 relative"
+        className="w-full lg:w-[42%] xl:w-[40%] min-h-screen lg:min-h-0 lg:h-full bg-[#FAFAF8] lg:bg-white flex flex-col justify-between p-6 sm:p-10 lg:p-8 xl:p-12 relative"
       >
-        <div className="w-full max-w-md mx-auto flex flex-col justify-between h-full space-y-8 my-auto py-6">
+        <div className="w-full max-w-md mx-auto flex flex-col justify-between h-full space-y-6 lg:space-y-0 my-auto">
           
-          <div>
-            {/* Top Workspace Indicator Chip & Reset Button */}
-            <div className="flex items-center justify-between gap-3 mb-8 pb-4 border-b border-stone-200">
-              <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-900 px-3 py-1.5 rounded-full text-xs font-semibold shadow-xs">
-                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                <span>Workspace:</span>
-                <span className="font-bold text-[#3E6B2B]">{selectedWorkspace.name}</span>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleReset}
-                className="text-xs font-semibold text-stone-500 hover:text-stone-900 hover:underline transition cursor-pointer"
-              >
-                Reset demo credentials
-              </button>
+          {/* Top Workspace Indicator Chip & Reset Button */}
+          <div className="flex items-center justify-between gap-3 pb-3 border-b border-stone-200 shrink-0">
+            <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-900 px-3 py-1 rounded-full text-xs font-semibold shadow-2xs">
+              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span>Workspace:</span>
+              <span className="font-bold text-[#3E6B2B]">{selectedWorkspace.name}</span>
             </div>
 
+            <button
+              type="button"
+              onClick={handleReset}
+              className="text-xs font-semibold text-stone-500 hover:text-stone-900 hover:underline transition cursor-pointer"
+            >
+              Reset demo credentials
+            </button>
+          </div>
+
+          {/* Centered Form Area */}
+          <div className="my-auto py-2">
+            
             {/* Greeting Header */}
-            <div className="mb-8">
+            <div className="mb-6">
               <h1 className="text-2xl sm:text-3xl font-extrabold text-stone-900 tracking-tight">
                 Welcome back
               </h1>
-              <p className="text-sm text-stone-600 mt-1.5 leading-relaxed">
+              <p className="text-sm text-stone-600 mt-1 leading-relaxed">
                 Sign in to your account to continue into <strong className="text-stone-800">LiliSare</strong>.
               </p>
             </div>
@@ -448,12 +335,6 @@ export const LoginPage: React.FC = () => {
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full px-4 py-3 rounded-xl border border-stone-300 text-base sm:text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#3E6B2B] focus:border-transparent transition bg-white shadow-2xs"
                   />
-                  <div className="text-xs text-stone-500 mt-1.5 flex items-center gap-1.5">
-                    <span>Simulating user:</span>
-                    <span className="font-semibold text-stone-800 bg-stone-100 px-2 py-0.5 rounded-md border border-stone-200">
-                      {selectedWorkspace.user}
-                    </span>
-                  </div>
                 </div>
 
                 <div>
@@ -488,7 +369,7 @@ export const LoginPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between pt-1">
+                <div className="flex items-center justify-between pt-0.5">
                   <label className="flex items-center gap-2.5 cursor-pointer text-xs sm:text-sm text-stone-600 select-none">
                     <input
                       type="checkbox"
@@ -502,7 +383,7 @@ export const LoginPage: React.FC = () => {
 
                 <button
                   type="submit"
-                  className="w-full bg-[#3E6B2B] hover:bg-[#335a23] text-white font-bold text-base sm:text-sm py-3.5 rounded-xl shadow-md hover:shadow-lg transition mt-3 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]"
+                  className="w-full bg-[#3E6B2B] hover:bg-[#335a23] text-white font-bold text-base sm:text-sm py-3.5 rounded-xl shadow-md hover:shadow-lg transition mt-2 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]"
                 >
                   <span>Sign in</span>
                   <span className="text-base">→</span>
@@ -512,20 +393,20 @@ export const LoginPage: React.FC = () => {
 
             {/* STEP 2: MULTI-FACTOR AUTHENTICATION (MFA) */}
             {step === 'mfa' && (
-              <form onSubmit={handleVerifyMfa} className="space-y-5 animate-fade-in">
-                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-xs text-emerald-900 flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0 font-bold text-sm shadow-sm">
+              <form onSubmit={handleVerifyMfa} className="space-y-4 animate-fade-in">
+                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5 text-xs text-emerald-900 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0 font-bold text-sm shadow-xs">
                     🔒
                   </div>
                   <div>
                     <div className="font-bold text-sm text-emerald-950">Enter the 6-digit code</div>
                     <div className="text-emerald-800 mt-0.5 leading-relaxed">
-                      Two-factor authentication is required for HIPAA compliance. We sent a code to your registered device.
+                      Two-factor authentication code sent to your registered device.
                     </div>
                   </div>
                 </div>
 
-                {/* 6-digit boxes (Responsive flex layout) */}
+                {/* 6-digit boxes */}
                 <div>
                   <div className="flex justify-between items-center gap-1.5 sm:gap-2 mb-2">
                     {mfaCode.map((digit, idx) => (
@@ -545,19 +426,19 @@ export const LoginPage: React.FC = () => {
                             nextEl?.focus();
                           }
                         }}
-                        className="w-12 h-14 sm:w-14 sm:h-16 text-center text-xl sm:text-2xl font-bold rounded-xl border border-stone-300 text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#3E6B2B] focus:border-[#3E6B2B] bg-white shadow-2xs"
+                        className="w-11 h-13 sm:w-13 sm:h-14 text-center text-xl font-bold rounded-xl border border-stone-300 text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#3E6B2B] focus:border-[#3E6B2B] bg-white shadow-2xs"
                       />
                     ))}
                   </div>
-                  <div className="text-center text-xs text-stone-500 mt-2">
+                  <div className="text-center text-xs text-stone-500 mt-1.5">
                     Demo pre-filled code: <span className="font-mono font-bold text-stone-800">482910</span>
                   </div>
                 </div>
 
-                <div className="space-y-2 pt-2">
+                <div className="space-y-2 pt-1">
                   <button
                     type="submit"
-                    className="w-full bg-[#3E6B2B] hover:bg-[#335a23] text-white font-bold text-base sm:text-sm py-3.5 rounded-xl shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
+                    className="w-full bg-[#3E6B2B] hover:bg-[#335a23] text-white font-bold text-base sm:text-sm py-3 rounded-xl shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <span>Verify and enter workspace</span>
                     <span>→</span>
@@ -566,7 +447,7 @@ export const LoginPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setStep('credentials')}
-                    className="w-full text-stone-600 hover:text-stone-900 font-semibold text-xs py-2 text-center transition cursor-pointer"
+                    className="w-full text-stone-600 hover:text-stone-900 font-semibold text-xs py-1.5 text-center transition cursor-pointer"
                   >
                     ← Back to credentials
                   </button>
@@ -576,21 +457,21 @@ export const LoginPage: React.FC = () => {
 
             {/* STEP 3: LOADING SIMULATION */}
             {step === 'loading' && (
-              <div className="py-12 flex flex-col items-center justify-center text-center space-y-4 animate-fade-in">
-                <div className="w-12 h-12 border-4 border-emerald-200 border-t-[#3E6B2B] rounded-full animate-spin"></div>
+              <div className="py-8 flex flex-col items-center justify-center text-center space-y-3 animate-fade-in">
+                <div className="w-10 h-10 border-4 border-emerald-200 border-t-[#3E6B2B] rounded-full animate-spin"></div>
                 <div>
-                  <div className="font-bold text-lg text-stone-900">
+                  <div className="font-bold text-base text-stone-900">
                     Opening {selectedWorkspace.name}…
                   </div>
-                  <p className="text-xs text-stone-500 mt-1">
-                    Loading role permissions, client caseload, and compliance scope.
+                  <p className="text-xs text-stone-500 mt-0.5">
+                    Loading role permissions and compliance scope.
                   </p>
                 </div>
               </div>
             )}
 
             {/* Request Access Link */}
-            <div className="mt-8 pt-6 border-t border-stone-200 text-center">
+            <div className="mt-6 pt-4 border-t border-stone-200 text-center">
               <span className="text-xs sm:text-sm text-stone-600">Don't have an account? </span>
               <button
                 type="button"
@@ -603,8 +484,8 @@ export const LoginPage: React.FC = () => {
           </div>
 
           {/* Bottom Security Note */}
-          <div className="text-center text-[11px] text-stone-400 leading-normal pt-4">
-            Access is by invitation only. Sessions automatically lock after 15 minutes of inactivity in compliance with HIPAA §164.312(a)(2)(iii).
+          <div className="text-center text-[11px] text-stone-400 leading-normal pt-2 shrink-0">
+            Access is by invitation only. Sessions lock after 15 minutes of inactivity.
           </div>
 
         </div>
