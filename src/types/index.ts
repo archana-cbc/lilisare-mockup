@@ -8,6 +8,16 @@ export interface ClientRecord {
   caregivers: string[];
   authorization: string;
   nextRnVisit: string;
+  status?: 'Onboarding' | 'Active' | 'On Hold' | 'Discharged';
+  careArrangement?: 'Agency' | 'Family Care' | 'Hybrid';
+  household?: string;
+  phone?: string;
+  email?: string;
+  city?: string;
+  authorizedHours?: number;
+  authExpiry?: string;
+  region?: string;
+  responsibleParties?: Array<{ name: string; relationship: string; phone: string }>;
 }
 
 export interface CaregiverRecord {
